@@ -1,4 +1,3 @@
-from functools import partial
 from typing import Any, Callable, Tuple, NamedTuple
 
 import jax
@@ -14,12 +13,12 @@ class ControlProblem(NamedTuple):
     objective: obj.Objective
     horizon: int
 
+
 ControllerState = Any
 ControllerTemporalInfo = Any
 
 ControllerPrototype = Callable[[State, int, ControllerState, ControllerTemporalInfo, Any],
                                Tuple[Input, ControllerState]]
-
 
 ControllerInitPrototype = Callable[[ControlProblem, Any], ControllerTemporalInfo]
 
@@ -70,7 +69,7 @@ def lqr_dynamic_programming(prob: ControlProblem) -> Tuple[jnp.ndarray, jnp.ndar
     return K, P
 
 
-def lqr_init_prototype(prob: ControlProblem,  params: LQRParams) -> Tuple[LQRControllerState, LQRTemporalInfo]:
+def lqr_init_prototype(prob: ControlProblem, params: LQRParams) -> Tuple[LQRControllerState, LQRTemporalInfo]:
     K, _ = lqr_dynamic_programming(prob)
 
     return None, K
@@ -78,7 +77,7 @@ def lqr_init_prototype(prob: ControlProblem,  params: LQRParams) -> Tuple[LQRCon
 
 @jax.jit
 def lqr_prototype(state: State, t: int, controller_state: LQRControllerState,
-           temporal_info: LQRTemporalInfo, params: LQRParams) -> Tuple[Input, LQRControllerState]:
+                  temporal_info: LQRTemporalInfo, params: LQRParams) -> Tuple[Input, LQRControllerState]:
     K = temporal_info
 
     return K @ state, None

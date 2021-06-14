@@ -66,7 +66,6 @@ def run(ic: State, est_noise: State, sim: Simulation,
         prob: ctl.ControlProblem, controller: ctl.Controller) -> Trajectory:
     return sim(ic, est_noise, prob.dynamics.params, prob.objective.params, controller.params)
 
-
 # def simulate(ic: State, prob: ctl.ControlProblem, controller: ctl.Controller,
 #              est_noise: State) -> Trajectory:
 #     init_controller_state, controller_temporal_info = controller.init()

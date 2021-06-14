@@ -1,6 +1,5 @@
 import unittest
 
-import jax
 import jax.numpy as jnp
 
 import rationality.objectives as obj

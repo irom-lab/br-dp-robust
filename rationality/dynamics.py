@@ -5,7 +5,6 @@ import jax.numpy as jnp
 
 from rationality.types import State, Input
 
-
 DynamicsPrototype = Callable[[State, Input, int, Any], State]
 
 
