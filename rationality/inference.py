@@ -1,11 +1,10 @@
+from functools import partial
+from typing import Callable, Optional, Union, Tuple
+
 import jax
 import jax.numpy as jnp
 import jax.random as rnd
-
-from functools import partial
-
 from jax.experimental import optimizers
-from typing import Callable, Optional, Union, Tuple
 
 
 @partial(jax.jit, static_argnums=0)
