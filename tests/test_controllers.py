@@ -37,22 +37,20 @@ class ControllerTests(unittest.TestCase):
         simulation = sim.compile_simulation(prob, lqr)
         states, inputs, costs = sim.run(ic, jnp.zeros((6, horizon)), simulation, prob, lqr)
 
-        ctl.cost_of_control_sequence(ic, 0, inputs, prob)
-
         self.assertAlmostEqual(ctl.lqr_cost_to_go(ic, 0, prob), costs.sum(), places=4)
 
         for t in range(horizon):
             x = states[:, t]
 
             self.assertAlmostEqual(ctl.lqr_cost_to_go(x, t, prob),
-                                   ctl.cost_of_control_sequence(x, t, inputs[:, t:], prob), places=4)
+                                   ctl.util.cost_of_control_sequence(x, t, inputs[:, t:], prob), places=4)
 
         for t in range(horizon):
             x = states[:, t]
             appended_inputs = jnp.concatenate((inputs[:, t:], jnp.ones((2, 100))), axis=1)
 
             self.assertAlmostEqual(ctl.lqr_cost_to_go(x, t, prob),
-                                   ctl.cost_of_control_sequence(x, t, appended_inputs, prob), places=4)
+                                   ctl.util.cost_of_control_sequence(x, t, appended_inputs, prob), places=4)
 
 
 if __name__ == '__main__':
