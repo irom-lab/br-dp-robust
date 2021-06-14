@@ -1,19 +1,35 @@
+from typing import Callable, Tuple, NamedTuple
+
 import jax
 import jax.numpy as jnp
 
-from typing import NewType, Callable, Tuple
-from functools import partial
-
-Objective = NewType('Objective', Callable[[jnp.ndarray, jnp.ndarray, int], float])
+from rationality.types import State, Input
 
 
-def create_objective(objective_prototype: Callable[..., jnp.ndarray], params: Tuple) -> Objective:
-    return Objective(lambda x, u, t: objective_prototype(x, u, t, *params))
+class Objective(NamedTuple):
+    fn: Callable[[State, Input, int], float]
+    params: Tuple
+
+    def __call__(self, state: State, input: Input, t: int) -> float:
+        return self.fn(state, input, t)
+
+
+class Quadratic(NamedTuple):
+    Q: jnp.ndarray
+    R: jnp.ndarray
+    Qf: jnp.ndarray
+    horizon: int
+
+
+def quadratic(Q: jnp.ndarray, R: jnp.ndarray, Qf: jnp.ndarray, horizon: int) -> Objective:
+    params = Quadratic(Q, R, Qf, horizon)
+
+    return Objective(jax.jit(lambda x, u, t: quad_obj_prototype(x, u, t, params)), params)
 
 
 @jax.jit
-def quad_obj_prototype(state: jnp.ndarray, input: jnp.ndarray, t: int,
-                       Q: jnp.ndarray, R: jnp.ndarray, Qf: jnp.ndarray, horizon: int) -> float:
+def quad_obj_prototype(state: jnp.ndarray, input: jnp.ndarray, t: int, params: Quadratic) -> float:
+    Q, R, Qf, horizon = params
 
     def trajectory_obj(xu: Tuple[jnp.ndarray, jnp.ndarray]) -> float:
         x, u = xu
