@@ -1,4 +1,4 @@
-from typing import Tuple, Callable, NamedTuple
+from typing import Tuple, Callable, NamedTuple, Any
 
 import jax
 import jax.numpy as jnp
@@ -6,12 +6,15 @@ import jax.numpy as jnp
 from rationality.types import State, Input
 
 
+DynamicsPrototype = Callable[[State, Input, int, Any], State]
+
+
 class Dynamics(NamedTuple):
-    fn: Callable[[State, Input, int], State]
+    prototype: DynamicsPrototype
     params: Tuple
 
     def __call__(self, state: State, input: Input, t: int) -> State:
-        return self.fn(state, input, t)
+        return self.prototype(state, input, t, self.params)
 
 
 class Linear(NamedTuple):
@@ -29,13 +32,13 @@ class Quad2D(NamedTuple):
 def linear(A: jnp.ndarray, B: jnp.ndarray) -> Dynamics:
     params = Linear(A, B)
 
-    return Dynamics(jax.jit(lambda x, u, t: linear_prototype(x, u, t, params)), params)
+    return Dynamics(linear_prototype, params)
 
 
 def quad2d(dt: float, mass: float, gravity: float, inertia: float) -> Dynamics:
     params = Quad2D(dt, mass, gravity, inertia)
 
-    return Dynamics(jax.jit(lambda x, u, t: quad2d_prototype(x, u, t, params)), params)
+    return Dynamics(quad2d_prototype, params)
 
 
 @jax.jit

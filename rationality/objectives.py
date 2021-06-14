@@ -1,4 +1,4 @@
-from typing import Callable, Tuple, NamedTuple
+from typing import Callable, Tuple, NamedTuple, Union, Any
 
 import jax
 import jax.numpy as jnp
@@ -6,37 +6,41 @@ import jax.numpy as jnp
 from rationality.types import State, Input
 
 
-class Objective(NamedTuple):
-    fn: Callable[[State, Input, int], float]
-    params: Tuple
+TrajectoryObjectivePrototype = Callable[[State, Input, int, Any], float]
+TerminalObjectivePrototype = Callable[[State, Any], float]
 
-    def __call__(self, state: State, input: Input, t: int) -> float:
-        return self.fn(state, input, t)
+
+class Objective(NamedTuple):
+    trajectory_prototype: TrajectoryObjectivePrototype
+    terminal_prototype: TerminalObjectivePrototype
+    params: Any
+
+    def __call__(self, *args: Union[Tuple[State, Input, int], Tuple[State]]) -> float:
+        if len(args) == 3:
+            return self.trajectory_prototype(*args, self.params)
+        elif len(args) == 1:
+            return self.terminal_prototype(*args, self.params)
+        else:
+            raise ValueError('Requires either 1 or 3 arguments.')
 
 
 class Quadratic(NamedTuple):
     Q: jnp.ndarray
     R: jnp.ndarray
     Qf: jnp.ndarray
-    horizon: int
 
 
-def quadratic(Q: jnp.ndarray, R: jnp.ndarray, Qf: jnp.ndarray, horizon: int) -> Objective:
-    params = Quadratic(Q, R, Qf, horizon)
+def quadratic(Q: jnp.ndarray, R: jnp.ndarray, Qf: jnp.ndarray) -> Objective:
+    @jax.jit
+    def trajectory_obj(x: State, u: Input, t: int, params: Quadratic) -> float:
+        Q, R, _ = params
 
-    return Objective(jax.jit(lambda x, u, t: quad_obj_prototype(x, u, t, params)), params)
-
-
-@jax.jit
-def quad_obj_prototype(state: jnp.ndarray, input: jnp.ndarray, t: int, params: Quadratic) -> float:
-    Q, R, Qf, horizon = params
-
-    def trajectory_obj(xu: Tuple[jnp.ndarray, jnp.ndarray]) -> float:
-        x, u = xu
         return x.T @ Q @ x + u.T @ R @ u
 
-    def terminal_obj(xu: Tuple[jnp.ndarray, jnp.ndarray]) -> float:
-        x, u = xu
+    @jax.jit
+    def terminal_obj(x: State, params: Quadratic) -> float:
+        _, _, Qf = params
+
         return x.T @ Qf @ x
 
-    return jax.lax.switch(t - (horizon - 1), (trajectory_obj, terminal_obj, lambda _: jnp.array(0.0)), (state, input))
+    return Objective(trajectory_obj, terminal_obj, Quadratic(Q, R, Qf))
