@@ -103,7 +103,7 @@ def objective_with_temporal_overflow(state: State, input: Input, t: int,
 
 
 def cost_of_control_sequence_scanner(carry: Tuple[State, int], input: Input,
-                                     prob: ControlProblem) -> Tuple[State, float]:
+                                     prob: ControlProblem) -> Tuple[Tuple[State, int], float]:
     state, t = carry
     dynamics, objective, _ = prob
     cost = objective_with_temporal_overflow(state, input, t, prob.horizon, prob.objective)
