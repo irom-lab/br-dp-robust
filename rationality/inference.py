@@ -33,7 +33,7 @@ def _euclidean(x: jnp.ndarray, y: jnp.ndarray) -> float:
     return jnp.sqrt(((x - y) ** 2).sum())
 
 
-@partial(jax.jit, static_argnums=1)
+@jax.jit
 def bw_median_rule(samples: jnp.ndarray, m: int) -> float:
     """
     A bandwidth selection heuristic chosen to make the sum of the kernel function over points equal 1, where one input
@@ -68,7 +68,7 @@ def rbf_kernel(x: jnp.ndarray, y: jnp.ndarray, _samples: jnp.array, bw: float) -
     return jnp.exp(-d / bw)
 
 
-@partial(jax.jit, static_argnums=3)
+@jax.jit
 def rbf_dyn_bw_kernel(x: jnp.ndarray, y: jnp.ndarray, samples: jnp.array, m: int) -> float:
     """
     Radial basis function (RBF) kernel. This kernel is defined as:
@@ -92,12 +92,20 @@ def rbf_dyn_bw_kernel(x: jnp.ndarray, y: jnp.ndarray, samples: jnp.array, m: int
     return jnp.exp(-d / bw)
 
 
-def importance_sample(log_prob: Callable[[jnp.ndarray], float],
-                      samples: jnp.ndarray,
-                      key: Optional[jnp.ndarray] = None,
-                      returned_samples: Optional[int] = 1,
-                      statistic: Optional[Union[Callable[[jnp.ndarray], jnp.ndarray],
-                                                Callable[[jnp.ndarray], float]]] = None) -> jnp.ndarray:
+@partial(jax.jit, static_argnums=(0, 1))
+def impsamp(log_prob: Callable[[jnp.ndarray], float],
+            statistic: Union[Callable[[jnp.ndarray], jnp.ndarray], Callable[[jnp.ndarray], float]],
+            samples: jnp.ndarray) -> Union[float, jnp.ndarray]:
+    logits = jax.vmap(log_prob, in_axes=1)(samples)
+
+    return jnp.average(jax.vmap(statistic, in_axes=1, out_axes=-1)(samples), axis=-1, weights=jnp.exp(logits))
+
+
+@partial(jax.jit, static_argnums=(0,))
+def sir(log_prob: Callable[[jnp.ndarray], float],
+        samples: jnp.ndarray,
+        key: jnp.ndarray,
+        returned_samples: int = 1) -> jnp.ndarray:
     """
     Perform importance sampling (or sampling importance resampling) on a data set.
 
@@ -116,25 +124,12 @@ def importance_sample(log_prob: Callable[[jnp.ndarray], float],
              distribution and this quantity is returned.
     """
     logits = jax.vmap(log_prob, in_axes=1)(samples)
+    idxs = rnd.categorical(key, logits=logits, shape=(returned_samples,))
 
-    if callable(statistic):
-        return jnp.average(jax.vmap(statistic, in_axes=1, out_axes=-1)(samples),
-                           axis=-1, weights=jnp.exp(logits))
-    else:
-        if key is None:
-            raise ValueError('The value of key cannot be `None` when performing sampling importance sampling.')
-        elif returned_samples < 1:
-            raise ValueError('Asked for an invalid number of samples.')
-
-        idxs = rnd.categorical(key, logits=logits, shape=(returned_samples,))
-
-        if returned_samples > 1:
-            return samples[:, idxs]
-        else:
-            return samples[:, idxs].flatten()
+    return jnp.take(samples, idxs, axis=1)
 
 
-@partial(jax.jit, static_argnums=(0, 1, 2, 4))
+@partial(jax.jit, static_argnums=(0, 1, 2))
 def sgvd(log_prob: Callable[[jnp.ndarray], float],
          kernel: Callable[[jnp.ndarray, jnp.ndarray, jnp.ndarray], jnp.ndarray],
          opt: optimizers.Optimizer,
