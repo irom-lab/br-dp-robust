@@ -86,8 +86,6 @@ def lqr_prototype(state: State, t: int, controller_state: LQRControllerState,
 
 def lqr_cost_to_go(state: State, t: int, prob: ControlProblem) -> float:
     dynamics, objective, horizon = prob
-
-    # P is the CTG for the horizon + 1 timestep problem
     _, P = lqr_dynamic_programming(ControlProblem(dynamics, objective, horizon - t))
 
     return state.T @ P @ state
@@ -97,21 +95,21 @@ def objective_with_temporal_overflow(state: State, input: Input, t: int,
                                      horizon: int, objective: obj.Objective) -> float:
     time_to_end = t - horizon
 
-    branches = (lambda op: objective.trajectory(*op),
-                lambda op: objective.terminal(op[0]),
+    branches = (lambda op: objective(*op),
+                lambda op: objective(op[0]),
                 lambda op: 0.0)
 
-    return jax.lax.switch(time_to_end - 1, branches, (state, input, t))
+    return jax.lax.switch(time_to_end + 1, branches, (state, input, t))
 
 
-def cost_of_control_sequence_scanner(carry: Tuple[int, State], input: Input,
+def cost_of_control_sequence_scanner(carry: Tuple[State, int], input: Input,
                                      prob: ControlProblem) -> Tuple[State, float]:
-    t, state = carry
+    state, t = carry
     dynamics, objective, _ = prob
     cost = objective_with_temporal_overflow(state, input, t, prob.horizon, prob.objective)
     next_state = dynamics(state, input, t)
 
-    return next_state, cost
+    return (next_state, t + 1), cost
 
 
 def cost_of_control_sequence(ic: State, it: int, inputs: Input, prob: ControlProblem) -> float:
@@ -119,4 +117,4 @@ def cost_of_control_sequence(ic: State, it: int, inputs: Input, prob: ControlPro
 
     final, costs = jax.lax.scan(lambda c, u: cost_of_control_sequence_scanner(c, u, prob), init, inputs.T)
 
-    return costs.sum() + prob.objective(final[0], jnp.array([0.0]), final[1])
+    return costs.sum()
