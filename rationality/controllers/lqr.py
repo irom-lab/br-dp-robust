@@ -8,8 +8,10 @@ LQRControllerState = None
 LQRParams = None
 
 
-def lqr(prob: ControlProblem) -> Controller:
-    return Controller(prob, lqr_init_prototype, lqr_prototype, None)
+def lqr(prob: Problem) -> Controller:
+    return Controller(jax.jit(lambda prob_params, params: lqr_init_prototype(prob_params, params,
+                                                                             prob.prototype.horizon)),
+                      lqr_prototype, None)
 
 
 @jax.jit
@@ -21,11 +23,10 @@ def lqr_scanner(P: jnp.ndarray, _, A: jnp.ndarray, B: jnp.ndarray,
     return P, K
 
 
-def lqr_dynamic_programming(prob: ControlProblem) -> Tuple[jnp.ndarray, jnp.ndarray]:
-    dynamics, objective, horizon = prob
-    A, B = dynamics.params
-    Q, R, Qf = objective.params
-
+def lqr_dynamic_programming(prob_params: ProblemParams, horizon: int) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    dynamics, objective = prob_params
+    A, B = dynamics
+    Q, R, Qf = objective
     init = Qf
 
     P, K = jax.lax.scan(lambda c, _: lqr_scanner(c, _, A, B, Q, R), init, None, length=horizon, reverse=True)
@@ -33,8 +34,9 @@ def lqr_dynamic_programming(prob: ControlProblem) -> Tuple[jnp.ndarray, jnp.ndar
     return K, P
 
 
-def lqr_init_prototype(prob: ControlProblem, params: LQRParams) -> Tuple[LQRControllerState, LQRTemporalInfo]:
-    K, _ = lqr_dynamic_programming(prob)
+def lqr_init_prototype(prob_params: ProblemParams,
+                       params: LQRParams, horizon: int) -> Tuple[LQRControllerState, LQRTemporalInfo]:
+    K, _ = lqr_dynamic_programming(prob_params, horizon)
 
     return None, K
 
@@ -47,8 +49,7 @@ def lqr_prototype(state: State, t: int, controller_state: LQRControllerState,
     return K @ state, None
 
 
-def cost_to_go(state: State, t: int, prob: ControlProblem) -> float:
-    dynamics, objective, horizon = prob
-    _, P = lqr_dynamic_programming(ControlProblem(dynamics, objective, horizon - t))
+def cost_to_go(state: State, t: int, prob: Problem) -> float:
+    _, P = lqr_dynamic_programming(prob.params, prob.prototype.horizon - t)
 
     return state.T @ P @ state

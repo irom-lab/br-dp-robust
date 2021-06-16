@@ -30,7 +30,7 @@ class ControllerTests(unittest.TestCase):
 
         dynamics = dyn.linear(*params)
         objective = obj.quadratic(Q, R, Qf)
-        prob = ctl.ControlProblem(dynamics, objective, horizon)
+        prob = ctl.problem(dynamics, objective, horizon)
 
         lqr = ctl.lqr(prob)
 
