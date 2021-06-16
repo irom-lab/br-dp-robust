@@ -12,6 +12,9 @@ class Dynamics(NamedTuple):
     prototype: DynamicsPrototype
     params: Tuple
 
+    num_states: int
+    num_inputs: int
+
     def __call__(self, state: State, input: Input, t: int) -> State:
         return self.prototype(state, input, t, self.params)
 
@@ -31,13 +34,19 @@ class Quad2D(NamedTuple):
 def linear(A: jnp.ndarray, B: jnp.ndarray) -> Dynamics:
     params = Linear(A, B)
 
-    return Dynamics(linear_prototype, params)
+    return Dynamics(linear_prototype, params, *B.shape)
 
 
 def quad2d(dt: float, mass: float, gravity: float, inertia: float) -> Dynamics:
     params = Quad2D(dt, mass, gravity, inertia)
 
-    return Dynamics(quad2d_prototype, params)
+    return Dynamics(quad2d_prototype, params, 6, 2)
+
+
+def crazyflie2d(dt: float) -> Dynamics:
+    params = Quad2D(dt, 0.03, 9.82, 1.43e-5)
+
+    return Dynamics(quad2d_prototype, params, 6, 2)
 
 
 @jax.jit
