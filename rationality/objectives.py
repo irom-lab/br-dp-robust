@@ -35,12 +35,12 @@ def quadratic(Q: jnp.ndarray, R: jnp.ndarray, Qf: jnp.ndarray) -> Objective:
     def trajectory_obj(x: State, u: Input, t: int, params: Quadratic) -> float:
         Q, R, _ = params
 
-        return x.T @ Q @ x + u.T @ R @ u
+        return 0.5 * x.T @ Q @ x + 0.5 * u.T @ R @ u
 
     @jax.jit
     def terminal_obj(x: State, params: Quadratic) -> float:
         _, _, Qf = params
 
-        return x.T @ Qf @ x
+        return 0.5 * x.T @ Qf @ x
 
     return Objective(trajectory_obj, terminal_obj, Quadratic(Q, R, Qf))
