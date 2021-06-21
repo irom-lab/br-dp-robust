@@ -26,6 +26,14 @@ class Problem(NamedTuple):
     prototype: ProblemPrototype
     params: ProblemParams
 
+    @property
+    def num_states(self) -> int:
+        return self.prototype.dynamics.num_states
+
+    @property
+    def num_inputs(self) -> int:
+        return self.prototype.dynamics.num_inputs
+
 
 ControllerState = Any
 ControllerTemporalInfo = Any
