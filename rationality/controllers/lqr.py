@@ -17,8 +17,8 @@ def lqr(prob: Problem) -> Controller:
 @jax.jit
 def lqr_scanner(P: jnp.ndarray, _, A: jnp.ndarray, B: jnp.ndarray,
                 Q: jnp.ndarray, R: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
-    K = -jnp.linalg.pinv(R + B.T @ P @ B) @ B.T @ P @ A
-    P = Q + A.T @ P @ A + A.T @ P @ B @ K
+    K = jnp.linalg.inv(R + B.T @ P @ B) @ B.T @ P @ A
+    P = Q + A.T @ P @ A - A.T @ P @ B @ K
 
     return P, K
 
@@ -46,7 +46,7 @@ def lqr_prototype(state: State, t: int, controller_state: LQRControllerState,
                   temporal_info: LQRTemporalInfo, params: LQRParams) -> Tuple[Input, LQRControllerState]:
     K = temporal_info
 
-    return K @ state, None
+    return -K @ state, None
 
 
 def cost_to_go(state: State, t: int, prob: Problem) -> float:
