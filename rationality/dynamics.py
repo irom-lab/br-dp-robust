@@ -33,6 +33,10 @@ class Quad2D(NamedTuple):
     gravity: float
     inertia: float
 
+    @property
+    def hover_force(self) -> float:
+        return self.mass * self.gravity
+
 
 def linear(A: jnp.ndarray, B: jnp.ndarray) -> Dynamics:
     params = Linear(A, B)
@@ -47,9 +51,7 @@ def quad2d(dt: float, mass: float, gravity: float, inertia: float) -> Dynamics:
 
 
 def crazyflie2d(dt: float) -> Dynamics:
-    params = Quad2D(dt, 0.03, 9.82, 1.43e-5)
-
-    return Dynamics(quad2d_prototype, params, 6, 2)
+    return quad2d(dt, 0.03, 9.82, 1.43e-5)
 
 
 @jax.jit
