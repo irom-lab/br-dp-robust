@@ -96,9 +96,9 @@ def rbf_dyn_bw_kernel(x: jnp.ndarray, y: jnp.ndarray, samples: jnp.array, m: int
 def impsamp(log_prob: Callable[[jnp.ndarray], float],
             statistic: Union[Callable[[jnp.ndarray], jnp.ndarray], Callable[[jnp.ndarray], float]],
             samples: jnp.ndarray) -> Union[float, jnp.ndarray]:
-    logits = jax.vmap(log_prob, in_axes=1)(samples)
+    logits = jax.vmap(log_prob, in_axes=-1)(samples)
 
-    return jnp.average(jax.vmap(statistic, in_axes=1, out_axes=-1)(samples), axis=-1, weights=jnp.exp(logits))
+    return jnp.average(jax.vmap(statistic, in_axes=-1, out_axes=-1)(samples), axis=-1, weights=jnp.exp(logits))
 
 
 @partial(jax.jit, static_argnums=(0,))
@@ -123,12 +123,12 @@ def sir(log_prob: Callable[[jnp.ndarray], float],
              returned. Otherwise the mean of statistic is computed using the samples from the final approximate
              distribution and this quantity is returned.
     """
-    logits = jax.vmap(log_prob, in_axes=1)(samples)
+    logits = jax.vmap(log_prob, in_axes=-1)(samples)
     idxs = rnd.categorical(key, logits=logits, shape=(returned_samples,))
 
-    return jnp.take(samples, idxs, axis=1)
+    return jnp.take(samples, idxs, axis=-1)
 
-
+# TODO: Change def so samples are along axis -1.
 @partial(jax.jit, static_argnums=(0, 1, 2))
 def sgvd(log_prob: Callable[[jnp.ndarray], float],
          kernel: Callable[[jnp.ndarray, jnp.ndarray, jnp.ndarray], jnp.ndarray],
