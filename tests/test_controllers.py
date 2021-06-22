@@ -39,24 +39,24 @@ class ControllerTests(unittest.TestCase):
 
         prob = make_lin_sys(ic, horizon)
 
-        lqr = ctl.lqr(prob)
+        lqr = ctl.lqr.create(prob)
 
         simulation = sim.compile_simulation(prob, lqr)
         states, inputs, costs = sim.run(ic, jnp.zeros((6, horizon)), simulation, prob, lqr)
 
-        self.assertAlmostEqual(ctl.lqr_cost_to_go(ic, 0, prob), costs.sum(), places=4)
+        self.assertAlmostEqual(ctl.lqr.cost_to_go(ic, 0, prob), costs.sum(), places=4)
 
         for t in range(horizon):
             x = states[:, t]
 
-            self.assertAlmostEqual(ctl.lqr_cost_to_go(x, t, prob),
+            self.assertAlmostEqual(ctl.lqr.cost_to_go(x, t, prob),
                                    ctl.util.cost_of_control_sequence(x, t, inputs[:, t:], prob), places=4)
 
         for t in range(horizon):
             x = states[:, t]
             appended_inputs = jnp.concatenate((inputs[:, t:], jnp.ones((2, 100))), axis=1)
 
-            self.assertAlmostEqual(ctl.lqr_cost_to_go(x, t, prob),
+            self.assertAlmostEqual(ctl.lqr.cost_to_go(x, t, prob),
                                    ctl.util.cost_of_control_sequence(x, t, appended_inputs, prob), places=4)
 
     def test_isc(self):
@@ -65,7 +65,7 @@ class ControllerTests(unittest.TestCase):
 
         prob = make_lin_sys(ic, horizon)
 
-        lqr = ctl.lqr(prob)
+        lqr = ctl.lqr.create(prob)
 
         simulation = sim.compile_simulation(prob, lqr)
         _, lqr_inputs, lqr_costs = sim.run(ic, jnp.zeros((6, horizon)), simulation, prob, lqr)
@@ -76,7 +76,7 @@ class ControllerTests(unittest.TestCase):
                                                    (0, t * prob.num_inputs)),
                                            cov) for t in range(horizon)]
 
-        isc = ctl.isc(prob, jnp.inf, 100000, rnd.PRNGKey(0), dst.GaussianPrototype(prob.num_inputs), prior_params)
+        isc = ctl.isc.create(prob, jnp.inf, 100000, rnd.PRNGKey(0), dst.GaussianPrototype(prob.num_inputs), prior_params)
 
         simulation = sim.compile_simulation(prob, isc)
         _, isc_inputs, isc_costs = sim.run(ic, jnp.zeros((6, horizon)), simulation, prob, isc)

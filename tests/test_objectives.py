@@ -17,7 +17,7 @@ class ObjectiveTests(unittest.TestCase):
         objective = obj.quadratic(Q, R, Qf)
 
         objective_evaluations = jnp.array([objective(x, u, 3), objective(x)])
-        answers = jnp.array([x.T @ Q @ x + u.T @ R @ u] + [x.T @ Qf @ x])
+        answers = 0.5 * jnp.array([x.T @ Q @ x + u.T @ R @ u] + [x.T @ Qf @ x])
 
         self.assertTrue(jnp.all(objective_evaluations == answers))
 
