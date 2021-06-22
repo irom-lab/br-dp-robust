@@ -8,7 +8,7 @@ LQRControllerState = None
 LQRParams = None
 
 
-def lqr(prob: Problem) -> Controller:
+def create(prob: Problem) -> Controller:
     return Controller(jax.jit(lambda prob_params, params: lqr_init_prototype(prob_params, params,
                                                                              prob.prototype.horizon)),
                       lqr_prototype, None)
@@ -52,4 +52,4 @@ def lqr_prototype(state: State, t: int, controller_state: LQRControllerState,
 def cost_to_go(state: State, t: int, prob: Problem) -> float:
     _, P = lqr_dynamic_programming(prob.params, prob.prototype.horizon - t)
 
-    return state.T @ P @ state
+    return 0.5 * state.T @ P @ state
