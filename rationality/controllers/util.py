@@ -42,3 +42,11 @@ def compile_cost_of_control_sequence(prob: Problem) -> Callable[[State, int, Inp
 
 def cost_of_control_sequence(ic: State, it: int, inputs: Input, prob: Problem) -> float:
     return compile_cost_of_control_sequence(prob)(ic, it, inputs)
+
+
+def hamiltonian(state: State, input_seq: Input, t: int, proto: ProblemPrototype,
+                cost_of_ctl_seq: Callable[[State, int, Input], float]) -> float:
+    inputs = jnp.pad(input_seq.reshape((proto.dynamics.num_inputs, -1), order='F'),
+                     [(0, 0), (0, 1)])
+
+    return cost_of_ctl_seq(state, t, inputs)
