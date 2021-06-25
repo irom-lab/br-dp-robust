@@ -56,9 +56,8 @@ def isc_prototype(state: State, t: int, controller_state: ISControllerState,
     key, subkey = rnd.split(controller_state, 2)
     input_samples = prior_proto.sample(num_samples, subkey, temporal_info)
 
-    log_prob = jax.jit(lambda u: prior_proto.log_prob(u, temporal_info) - params.inv_temp * hamiltonian(state, u, t,
-                                                                                                        prob_proto,
-                                                                                                        cost_of_ctl_seq))
+    log_prob = jax.jit(lambda u: prior_proto.log_prob(u, temporal_info)
+                                 - params.inv_temp * util.hamiltonian(state, u, t, prob_proto, cost_of_ctl_seq))
 
     @jax.jit
     def zero_temp_case(input_sequences: jnp.ndarray) -> jnp.ndarray:
