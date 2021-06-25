@@ -7,6 +7,9 @@ import jax.random as rnd
 from jax.experimental import optimizers
 
 
+Kernel = Callable[[jnp.ndarray, jnp.ndarray, jnp.ndarray], float]
+
+
 @partial(jax.jit, static_argnums=0)
 def _distmat(func: Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray], x: jnp.ndarray, y: jnp.ndarray) -> jnp.ndarray:
     """
@@ -128,13 +131,14 @@ def sir(log_prob: Callable[[jnp.ndarray], float],
 
     return jnp.take(samples, idxs, axis=-1)
 
+
 # TODO: Change def so samples are along axis -1.
-@partial(jax.jit, static_argnums=(0, 1, 2))
+@partial(jax.jit, static_argnums=(0, 1, 2, 4))
 def sgvd(log_prob: Callable[[jnp.ndarray], float],
-         kernel: Callable[[jnp.ndarray, jnp.ndarray, jnp.ndarray], jnp.ndarray],
+         kernel: Kernel,
          opt: optimizers.Optimizer,
          samples: jnp.ndarray,
-         iters: int = 1000) -> jnp.ndarray:
+         iters: int = 100) -> jnp.ndarray:
     """
     Perform inferance using Stein Variational Gradient Descent.
 
@@ -162,8 +166,8 @@ def sgvd(log_prob: Callable[[jnp.ndarray], float],
     :param iters: The number of optimization steps to take.
     :return: All samples from the (approximate) target distribution are returned.
     """
-    lp_grad = jax.grad(log_prob)
-    kern_grad = jax.grad(kernel, argnums=0)
+    lp_grad = jax.jit(jax.grad(log_prob))
+    kern_grad = jax.jit(jax.grad(kernel, argnums=0))
 
     opt_init, opt_update, get_params = opt
 
