@@ -19,8 +19,8 @@ def objective_with_temporal_overflow(state: State, input: Input, t: int,
 
 
 @partial(jax.jit, static_argnums=3)
-def cost_of_control_sequence_scanner(carry: Tuple[State, int], input: Input, params: ProblemParams,
-                                     proto: ProblemPrototype) -> Tuple[Tuple[State, int], float]:
+def cost_of_control_sequence_scanner(carry: tuple[State, int], input: Input, params: ProblemParams,
+                                     proto: ProblemPrototype) -> tuple[tuple[State, int], float]:
     state, t = carry
     cost = objective_with_temporal_overflow(state, input, t, params.objective, proto)
     next_state = proto.dynamics(state, input, t, params.dynamics)

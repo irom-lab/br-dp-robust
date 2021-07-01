@@ -1,4 +1,4 @@
-from typing import Callable, Tuple, NamedTuple, Union, Any
+from typing import Callable, NamedTuple, Union, Any
 
 import jax
 import jax.numpy as jnp
@@ -15,7 +15,7 @@ class Objective(NamedTuple):
     terminal_prototype: TerminalObjectivePrototype
     params: Any
 
-    def __call__(self, *args: Union[Tuple[State, Input, int], Tuple[State]]) -> float:
+    def __call__(self, *args: Union[tuple[State, Input, int], tuple[State]]) -> float:
         if len(args) == 3:
             return self.trajectory_prototype(*args, self.params)
         elif len(args) == 1:

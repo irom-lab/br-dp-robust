@@ -1,4 +1,4 @@
-from typing import Any, Callable, Tuple, NamedTuple
+from typing import Any, Callable, NamedTuple
 
 import rationality.dynamics as dyn
 import rationality.objectives as obj
@@ -39,9 +39,9 @@ ControllerState = Any
 ControllerTemporalInfo = Any
 
 ControllerPrototype = Callable[[State, int, ControllerState, ControllerTemporalInfo, Any],
-                               Tuple[Input, ControllerState]]
+                               tuple[Input, ControllerState]]
 
-ControllerInitPrototype = Callable[[ProblemParams, Any], Tuple[ControllerState, ControllerTemporalInfo]]
+ControllerInitPrototype = Callable[[ProblemParams, Any], tuple[ControllerState, ControllerTemporalInfo]]
 
 
 class Controller(NamedTuple):
@@ -49,11 +49,11 @@ class Controller(NamedTuple):
     controller_prototype: ControllerPrototype
     params: Any
 
-    def init(self, prob_params: ProblemParams) -> Tuple[ControllerState, ControllerTemporalInfo]:
+    def init(self, prob_params: ProblemParams) -> tuple[ControllerState, ControllerTemporalInfo]:
         return self.init_prototype(prob_params, self.params)
 
     def __call__(self, state: State, t: int, controller_state: ControllerState,
-                 temporal_info: ControllerTemporalInfo) -> Tuple[Input, ControllerState]:
+                 temporal_info: ControllerTemporalInfo) -> tuple[Input, ControllerState]:
         return self.controller_prototype(state, t, controller_state, temporal_info, self.params)
 
 

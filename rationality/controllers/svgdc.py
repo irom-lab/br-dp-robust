@@ -1,5 +1,5 @@
 from functools import partial
-from typing import List, Union, Optional
+from typing import Union, Optional
 
 import jax
 import jax.numpy as jnp
@@ -27,7 +27,7 @@ def dummy_kernel(x: jnp.ndarray, y: jnp.ndarray, z: jnp.ndarray) -> float:
 
 
 def create(prob: Problem, inv_temp: float, init_key: jnp.ndarray, bandwidth: Union[str, float], num_samples: int,
-           prior_proto: dst.DistributionPrototype, prior_params: List[Tuple],
+           prior_proto: dst.DistributionPrototype, prior_params: list[Tuple],
            opt: Optimizer, opt_iters: int, sir_at_end: bool = False) -> Controller:
     num_prior_params = len(prior_params[0])
     prior_params_for_scanning = tuple(jnp.stack([p[i] for p in prior_params]) for i in range(num_prior_params))

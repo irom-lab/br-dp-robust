@@ -1,4 +1,4 @@
-from typing import Tuple, Callable, Any
+from typing import Callable, Any
 
 import jax
 import jax.numpy as jnp
@@ -6,17 +6,17 @@ import jax.numpy as jnp
 from rationality import controllers as ctl
 from rationality.types import State, Input
 
-Trajectory = Tuple[State, Input, jnp.ndarray]
+Trajectory = tuple[State, Input, jnp.ndarray]
 Simulation = Callable[[State, State, ctl.ProblemParams, Any], Trajectory]
 
 
-def simulation_scanner_prototype(carry: Tuple[State, ctl.ControllerState],
-                                 slice: Tuple[int, ctl.ControllerTemporalInfo],
+def simulation_scanner_prototype(carry: tuple[State, ctl.ControllerState],
+                                 slice: tuple[int, ctl.ControllerTemporalInfo],
                                  prob_params: ctl.ProblemParams,
                                  controller_params: Any,
                                  prob_proto: ctl.ProblemPrototype,
-                                 controller_prototype: ctl.ControllerPrototype) -> Tuple[Tuple[State, Input],
-                                                                                         Tuple[State, Input, float]]:
+                                 controller_prototype: ctl.ControllerPrototype) -> tuple[tuple[State, Input],
+                                                                                         tuple[State, Input, float]]:
     state, controller_state = carry
     t, est_noise, controller_temporal_info = slice
 
@@ -33,8 +33,8 @@ def compile_simulation(prob: ctl.Problem, controller: ctl.Controller) -> Simulat
     init_controller_prototype, controller_prototype, _ = controller
 
     @jax.jit
-    def simulation_scanner(carry: Tuple[State, ctl.ControllerState],
-                           slice: Tuple[int, State, ctl.ControllerTemporalInfo],
+    def simulation_scanner(carry: tuple[State, ctl.ControllerState],
+                           slice: tuple[int, State, ctl.ControllerTemporalInfo],
                            prob_params: ctl.ProblemParams, controller_params: Any):
         return simulation_scanner_prototype(carry, slice, prob_params, controller_params,
                                             prob.prototype, controller_prototype)

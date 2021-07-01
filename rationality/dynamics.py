@@ -1,9 +1,10 @@
-from typing import Tuple, Callable, NamedTuple, Any
+from typing import Callable, NamedTuple, Any
 
 import jax
 import jax.numpy as jnp
 
 from rationality.types import State, Input
+
 
 class DynamicsPrototype(NamedTuple):
     mapping: Callable[[State, Input, int, Any], State]
@@ -16,7 +17,7 @@ class DynamicsPrototype(NamedTuple):
 
 class Dynamics(NamedTuple):
     prototype: DynamicsPrototype
-    params: Tuple
+    params: tuple
 
     def __call__(self, state: State, input: Input, t: int) -> State:
         return self.prototype(state, input, t, self.params)

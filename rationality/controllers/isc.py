@@ -1,5 +1,4 @@
 from functools import partial
-from typing import List
 
 import jax
 import jax.numpy as jnp
@@ -20,7 +19,7 @@ class ISCParams(NamedTuple):
 
 
 def create(prob: Problem, inv_temp: float, num_samples: int, init_key: jnp.ndarray,
-           prior_proto: dst.DistributionPrototype, prior_params: List[Tuple]) -> Controller:
+           prior_proto: dst.DistributionPrototype, prior_params: list[Tuple]) -> Controller:
     num_prior_params = len(prior_params[0])
     prior_params_for_scanning = tuple(jnp.stack([p[i] for p in prior_params]) for i in range(num_prior_params))
     params = ISCParams(inv_temp, init_key)
