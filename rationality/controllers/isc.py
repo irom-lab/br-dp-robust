@@ -19,7 +19,7 @@ class ISCParams(NamedTuple):
 
 
 def create(prob: Problem, inv_temp: float, num_samples: int, init_key: jnp.ndarray,
-           prior_proto: dst.DistributionPrototype, prior_params: list[Tuple]) -> Controller:
+           prior_proto: dst.DistributionPrototype, prior_params: list[tuple]) -> Controller:
     num_prior_params = len(prior_params[0])
     prior_params_for_scanning = tuple(jnp.stack([p[i] for p in prior_params]) for i in range(num_prior_params))
     params = ISCParams(inv_temp, init_key)
@@ -35,7 +35,7 @@ def create(prob: Problem, inv_temp: float, num_samples: int, init_key: jnp.ndarr
 
 
 def init_isc_prototype(params: ProblemParams, isc_params: ISCParams,
-                       prior_params: Any) -> Tuple[ISControllerState, ISTemporalInfo]:
+                       prior_params: Any) -> tuple[ISControllerState, ISTemporalInfo]:
     return isc_params.init_key, prior_params
 
 
@@ -51,7 +51,7 @@ def hamiltonian(state: State, input_seq: Input, t: int, proto: ProblemPrototype,
 def isc_prototype(state: State, t: int, controller_state: ISControllerState,
                   temporal_info: Any, params: ISCParams,
                   prior_proto: dst.DistributionPrototype, num_samples: int, prob_proto: ProblemPrototype,
-                  cost_of_ctl_seq: Callable[[State, int, Input], float]) -> Tuple[Input, ISControllerState]:
+                  cost_of_ctl_seq: Callable[[State, int, Input], float]) -> tuple[Input, ISControllerState]:
     key, subkey = rnd.split(controller_state, 2)
     input_samples = prior_proto.sample(num_samples, subkey, temporal_info)
 

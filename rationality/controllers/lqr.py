@@ -16,14 +16,14 @@ def create(prob: Problem) -> Controller:
 
 @jax.jit
 def lqr_scanner(P: jnp.ndarray, _, A: jnp.ndarray, B: jnp.ndarray,
-                Q: jnp.ndarray, R: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+                Q: jnp.ndarray, R: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
     K = jnp.linalg.inv(R + B.T @ P @ B) @ B.T @ P @ A
     P = Q + A.T @ P @ A - A.T @ P @ B @ K
 
     return P, K
 
 
-def lqr_dynamic_programming(prob_params: ProblemParams, horizon: int) -> Tuple[jnp.ndarray, jnp.ndarray]:
+def lqr_dynamic_programming(prob_params: ProblemParams, horizon: int) -> tuple[jnp.ndarray, jnp.ndarray]:
     dynamics, objective = prob_params
     A, B = dynamics
     Q, R, Qf = objective
@@ -35,7 +35,7 @@ def lqr_dynamic_programming(prob_params: ProblemParams, horizon: int) -> Tuple[j
 
 
 def lqr_init_prototype(prob_params: ProblemParams,
-                       params: LQRParams, horizon: int) -> Tuple[LQRControllerState, LQRTemporalInfo]:
+                       params: LQRParams, horizon: int) -> tuple[LQRControllerState, LQRTemporalInfo]:
     K, _ = lqr_dynamic_programming(prob_params, horizon)
 
     return None, K
@@ -43,7 +43,7 @@ def lqr_init_prototype(prob_params: ProblemParams,
 
 @jax.jit
 def lqr_prototype(state: State, t: int, controller_state: LQRControllerState,
-                  temporal_info: LQRTemporalInfo, params: LQRParams) -> Tuple[Input, LQRControllerState]:
+                  temporal_info: LQRTemporalInfo, params: LQRParams) -> tuple[Input, LQRControllerState]:
     K = temporal_info
 
     return -K @ state, None

@@ -27,7 +27,7 @@ def dummy_kernel(x: jnp.ndarray, y: jnp.ndarray, z: jnp.ndarray) -> float:
 
 
 def create(prob: Problem, inv_temp: float, init_key: jnp.ndarray, bandwidth: Union[str, float], num_samples: int,
-           prior_proto: dst.DistributionPrototype, prior_params: list[Tuple],
+           prior_proto: dst.DistributionPrototype, prior_params: list[tuple],
            opt: Optimizer, opt_iters: int, sir_at_end: bool = False) -> Controller:
     num_prior_params = len(prior_params[0])
     prior_params_for_scanning = tuple(jnp.stack([p[i] for p in prior_params]) for i in range(num_prior_params))
@@ -52,7 +52,7 @@ def create(prob: Problem, inv_temp: float, init_key: jnp.ndarray, bandwidth: Uni
 
 
 def init_svgdc_prototype(params: ProblemParams, svgdc_params: SVGDCParams,
-                         prior_params: Any) -> Tuple[SVGDCState, SVGDCTemporalInfo]:
+                         prior_params: Any) -> tuple[SVGDCState, SVGDCTemporalInfo]:
     return svgdc_params.init_key, prior_params
 
 
@@ -75,7 +75,7 @@ def svgdc_prototype(state: State, t: int, controller_state: SVGDCState,
                     kernel: inf.Kernel,
                     opt: Optimizer,
                     opt_iters: int,
-                    sir_at_end: bool = False) -> Tuple[Input, SVGDCState]:
+                    sir_at_end: bool = False) -> tuple[Input, SVGDCState]:
     key, subkey1, subkey2 = rnd.split(controller_state, 3)
     prior_input_samples = prior_proto.sample(num_samples, subkey1, temporal_info)
 
