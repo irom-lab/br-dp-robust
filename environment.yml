@@ -1,0 +1,18 @@
+name: rationality
+channels:
+  - defaults
+dependencies:
+  - jupyter
+  - tqdm
+  - jupyterlab
+  - numpy
+  - scipy
+  - absl-py
+  - flatbuffers
+  - opt_einsum
+
+  - pip:
+    - jax==0.2.16
+    - jaxlib==0.1.68+cuda111
+    - termplotlib==0.3.5
+
