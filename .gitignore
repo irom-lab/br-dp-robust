@@ -133,5 +133,5 @@ dmypy.json
 .idea/
 
 # Numpy / Jax / Pandas
-.npz
-.pkl
+*.npz
+*.pkl
