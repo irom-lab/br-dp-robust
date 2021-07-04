@@ -8,11 +8,11 @@ dependencies:
   - numpy
   - scipy
   - absl-py
-  - flatbuffers
   - opt_einsum
 
   - pip:
+    - flatbuffers==2.0
     - jax==0.2.16
     - jaxlib==0.1.68+cuda111
-    - termplotlib==0.3.5
+    - termplotlib
 
