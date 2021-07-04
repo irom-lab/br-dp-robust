@@ -9,7 +9,7 @@ dependencies:
   - scipy
   - absl-py
   - opt_einsum
-
+  - pandas
   - pip:
     - flatbuffers==2.0
     - jax==0.2.16
