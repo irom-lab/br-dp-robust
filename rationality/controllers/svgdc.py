@@ -76,7 +76,6 @@ def svgdc_sample_infinite(prior_input_samples: jnp.ndarray, log_prob_infinite: C
     return jnp.take(posterior_input_samples, jnp.argmax(log_probs), axis=-1)
 
 
-
 @partial(jax.jit, static_argnums=(5, 6, 7, 8, 9, 10, 11, 12))
 def svgdc_prototype(state: State, t: int, controller_state: SVGDCState,
                     temporal_info: Any, params: SVGDCParams,
