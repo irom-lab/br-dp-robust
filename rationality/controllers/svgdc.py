@@ -61,10 +61,19 @@ def svgdc_sample_finite(prior_input_samples: jnp.ndarray, key: Optional[jnp.ndar
                         log_prob_finite: Callable[[jnp.ndarray], float], kernel: inf.Kernel, opt: Optimizer,
                         opt_iters: int, sir_at_end: bool) -> jnp.ndarray:
     if sir_at_end:
-        samples = inf.sgvd(log_prob_finite, kernel, opt, prior_input_samples, opt_iters)
-        return inf.sir(log_prob_finite, samples, key)
+        posterior_input_samples = inf.sgvd(log_prob_finite, kernel, opt, prior_input_samples, opt_iters)
+        return inf.sir(log_prob_finite, posterior_input_samples, key)
     else:
         return inf.sgvd(log_prob_finite, kernel, opt, prior_input_samples, opt_iters)[:, 0]
+
+
+@partial(jax.jit, static_argnums=(2, 3, 4, 5, 6))
+def svgdc_sample_infinite(prior_input_samples: jnp.ndarray, log_prob_infinite: Callable[[jnp.ndarray], float],
+                     opt: Optimizer, opt_iters: int) -> jnp.ndarray:
+    posterior_input_samples = inf.sgvd(log_prob_infinite, dummy_kernel, opt, prior_input_samples, opt_iters)
+    log_probs = jax.vmap(log_prob_infinite, in_axes=-1)(posterior_input_samples)
+
+    return jnp.take(posterior_input_samples, jnp.argmin(log_probs), axis=-1)
 
 
 @partial(jax.jit, static_argnums=(5, 6, 7, 8, 9, 10, 11, 12))
@@ -84,11 +93,11 @@ def svgdc_prototype(state: State, t: int, controller_state: SVGDCState,
     sample_finite = jax.jit(lambda u: svgdc_sample_finite(u, subkey2, log_prob_finite,
                                                           kernel, opt, opt_iters, sir_at_end))
 
-    log_prob_inf = jax.jit(lambda u: -util.hamiltonian(state, u, t, prob_proto, cost_of_ctl_seq))
-    sample_inf = jax.jit(lambda u: inf.sgvd(log_prob_inf, dummy_kernel, opt, u[:, 0].reshape((-1, 1)), opt_iters)[:, 0])
+    log_prob_infinite = jax.jit(lambda u: -util.hamiltonian(state, u, t, prob_proto, cost_of_ctl_seq))
+    sample_infinite = jax.jit(lambda u: svgdc_sample_infinite(u, log_prob_infinite, opt, opt_iters))
 
     posterior_input_sample = jax.lax.cond(jnp.isinf(params.inv_temp),
-                                          sample_inf,
+                                          sample_infinite,
                                           sample_finite,
                                           prior_input_samples)
 
