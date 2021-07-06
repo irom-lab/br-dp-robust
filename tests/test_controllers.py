@@ -3,6 +3,7 @@ import unittest
 import jax
 import jax.numpy as jnp
 import jax.random as rnd
+import jax.experimental.optimizers as opt
 
 import rationality.controllers as ctl
 import rationality.dynamics as dyn
@@ -35,7 +36,7 @@ def make_lin_sys(ic: jnp.ndarray, horizon: int) -> ctl.Problem:
 class ControllerTests(unittest.TestCase):
     def test_lqr(self):
         ic = jnp.array([1.0, -1.0, 0.0, 0.0, 0.0, 0.0])
-        horizon = 50
+        horizon = 25
 
         prob = make_lin_sys(ic, horizon)
 
@@ -50,14 +51,14 @@ class ControllerTests(unittest.TestCase):
             x = states[:, t]
 
             self.assertAlmostEqual(ctl.lqr.cost_to_go(x, t, prob),
-                                   ctl.util.cost_of_control_sequence(x, t, inputs[:, t:], prob), places=4)
+                                   ctl.util.cost_of_control_sequence(x, t, inputs[:, t:], prob), places=3)
 
         for t in range(horizon):
             x = states[:, t]
             appended_inputs = jnp.concatenate((inputs[:, t:], jnp.ones((2, 100))), axis=1)
 
             self.assertAlmostEqual(ctl.lqr.cost_to_go(x, t, prob),
-                                   ctl.util.cost_of_control_sequence(x, t, appended_inputs, prob), places=4)
+                                   ctl.util.cost_of_control_sequence(x, t, appended_inputs, prob), places=3)
 
     def test_isc(self):
         ic = jnp.array([1.0, -1.0, 0.0, 0.0, 0.0, 0.0])
@@ -81,6 +82,25 @@ class ControllerTests(unittest.TestCase):
         simulation = sim.compile_simulation(prob, isc)
         _, isc_inputs, isc_costs = sim.run(ic, jnp.zeros((6, horizon)), simulation, prob, isc)
         self.assertAlmostEqual(isc_costs.sum(), lqr_costs.sum(), places=0)
+
+    def test_mpc(self):
+        ic = jnp.array([1.0, -1.0, 0.0, 0.0, 0.0, 0.0])
+        horizon = 10
+
+        prob = make_lin_sys(ic, horizon)
+
+        lqr = ctl.lqr.create(prob)
+        mpc = ctl.mpc.create(prob, opt.adam(1e-1), 1000)
+
+        lqr_simulation = sim.compile_simulation(prob, lqr)
+        mpc_simulation = sim.compile_simulation(prob, mpc)
+
+        lqr_states, lqr_inputs, lqr_costs = sim.run(ic, jnp.zeros((6, horizon)), lqr_simulation, prob, lqr)
+        mpc_states, mpc_inputs, mpc_costs = sim.run(ic, jnp.zeros((6, horizon)), mpc_simulation, prob, mpc)
+
+        self.assertLess(jnp.abs(mpc_inputs.T - lqr_inputs.T).max(), 0.001)
+
+
 
 
 
