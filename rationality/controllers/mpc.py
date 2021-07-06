@@ -67,6 +67,6 @@ def mpc_prototype(state: State, t: int, controller_state: MPCState,
     values, flattened_inputs = opt_traj
 
     best_idx = values.argmin()
-    best_flattened_input = jnp.take(best_idx, axis=0)
+    best_flattened_input = jnp.take(flattened_inputs, best_idx, axis=0)
 
     return best_flattened_input[:prob_proto.dynamics.num_inputs], None
