@@ -18,33 +18,21 @@ class MPCParams(NamedTuple):
     pass
 
 
-def create(prob: Problem, inv_temp: float, init_key: jnp.ndarray, bandwidth: Union[str, float], num_samples: int,
-           prior_proto: dst.DistributionPrototype, prior_params: list[tuple],
-           opt: Optimizer, opt_iters: int, sir_at_end: bool = False) -> Controller:
-    num_prior_params = len(prior_params[0])
-    prior_params_for_scanning = tuple(jnp.stack([p[i] for p in prior_params]) for i in range(num_prior_params))
-    params = MPCParams(inv_temp, init_key, bandwidth)
+def create(prob: Problem, num_samples: int,
+           prior_proto: dst.DistributionPrototype,
+           opt: Optimizer, opt_iters: int) -> Controller:
     cost_of_ctl_seq = util.compile_cost_of_control_sequence(prob)
 
-    init_svmpc = jax.jit(lambda prob_params, svmp_params: init_svmpc_prototype(prob_params, svmp_params,
-                                                                               prior_params_for_scanning))
+    init_mpc = jax.jit(lambda prob_params, mpc_params: init_svmpc_prototype(prob_params, mpc_params))
 
-    if bandwidth == 'dynamic':
-        kernel = jax.jit(lambda x, y, s: inf.rbf_dyn_bw_kernel(x, y, s, num_samples))
-        bandwidth = jnp.nan
-    else:
-        kernel = jax.jit(lambda x, y, s: inf.rbf_kernel(x, y, s, bandwidth))
+    mpc = jax.jit(lambda state, t, controller_state, temporal_info, params:
+                    mpc_prototype(state, t, controller_state, temporal_info, params,
+                                    prob.prototype, cost_of_ctl_seq, opt, opt_iters))
 
-    svmpc = jax.jit(lambda state, t, controller_state, temporal_info, params:
-                    svmpc_prototype(state, t, controller_state, temporal_info, params,
-                                    prior_proto, num_samples, prob.prototype, cost_of_ctl_seq,
-                                    kernel, opt, opt_iters, sir_at_end))
-
-    return Controller(init_svmpc, svmpc, params)
+    return Controller(init_mpc, mpc, MPCParams())
 
 
-def init_svmpc_prototype(params: ProblemParams, svmpc_params: MPCParams,
-                         prior_params: Any) -> tuple[MPCState, MPCTemporalInfo]:
+def init_svmpc_prototype(params: ProblemParams, svmpc_params: MPCParams) -> tuple[MPCState, MPCTemporalInfo]:
     return None, None
 
 
