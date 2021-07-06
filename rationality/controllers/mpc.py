@@ -18,9 +18,7 @@ class MPCParams(NamedTuple):
     pass
 
 
-def create(prob: Problem, num_samples: int,
-           prior_proto: dst.DistributionPrototype,
-           opt: Optimizer, opt_iters: int) -> Controller:
+def create(prob: Problem, opt: Optimizer, opt_iters: int) -> Controller:
     cost_of_ctl_seq = util.compile_cost_of_control_sequence(prob)
 
     init_mpc = jax.jit(lambda prob_params, mpc_params: init_svmpc_prototype(prob_params, mpc_params))
