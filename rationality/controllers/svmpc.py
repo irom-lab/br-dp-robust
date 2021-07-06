@@ -34,7 +34,7 @@ def create(prob: Problem, inv_temp: float, init_key: jnp.ndarray, bandwidth: Uni
     params = SVMPCParams(inv_temp, init_key, bandwidth)
     cost_of_ctl_seq = util.compile_cost_of_control_sequence(prob)
 
-    init_svmpc = jax.jit(lambda prob_params, svmp_params: init_svmpc_prototype(prob_params, svmp_params,
+    init_svmpc = jax.jit(lambda prob_params, svmpc_params: init_svmpc_prototype(prob_params, svmpc_params,
                                                                                prior_params_for_scanning))
 
     if bandwidth == 'dynamic':
