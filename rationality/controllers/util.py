@@ -50,3 +50,8 @@ def hamiltonian(state: State, input_seq: Input, t: int, proto: ProblemPrototype,
                      [(0, 0), (0, 1)])
 
     return cost_of_ctl_seq(state, t, inputs)
+
+
+@partial(jax.jit, static_argnums=1)
+def flat_inputs_to_sequence(inputs: Input, num_inputs: int) -> Input:
+    return inputs.reshape((num_inputs, -1), order='F')
