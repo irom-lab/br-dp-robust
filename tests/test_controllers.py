@@ -34,17 +34,14 @@ def make_lin_sys(ic: jnp.ndarray, horizon: int) -> ctl.Problem:
     return ctl.problem(dynamics, objective, horizon)
 
 
-def make_nonlin_sys(ic: jnp.ndarray, horizon: int) -> ctl.Problem:
-    mass = 1.0
-    gravity = 9.8
-    inertia = 1.0
-    dt = 0.25
+def make_nonlin_sys(horizon: int) -> ctl.Problem:
+    dt = 0.3
 
-    dynamics = dyn.quad2d(dt, mass, gravity, inertia)
+    dynamics = dyn.crazyflie2d(dt)
 
-    Q = jnp.eye(6)
-    R = 0.001 * jnp.eye(2)
-    Qf = 100 * jnp.eye(6)
+    Q = jnp.zeros((6, 6))
+    R = 0.001 * jnp.zeros((2, 2))
+    Qf = 10 * jnp.eye(6)
 
     objective = obj.quadratic(Q, R, Qf)
 
@@ -121,16 +118,18 @@ class ControllerTests(unittest.TestCase):
 
     def test_mpc_nonlinear(self):
         ic = jnp.array([1.0, -1.0, 0.0, 0.0, 0.0, 0.0])
-        horizon = 10
+        horizon = 12
 
-        prob = make_nonlin_sys(ic, horizon)
+        prob = make_nonlin_sys(horizon)
 
-        mpc = ctl.mpc.create(prob, opt.adam(1e-0), 100)
+        mpc = ctl.mpc.create(prob, opt.adam(1e-0), 1000)
 
         mpc_simulation = sim.compile_simulation(prob, mpc)
-        mpc_states, mpc_inputs, mpc_costs = sim.run(ic, jnp.zeros((6, horizon)), mpc_simulation, prob, mpc)
 
-        self.assertLess(jnp.abs(mpc_states[:, -1].max()), 0.002)
+        with jax.disable_jit():
+            mpc_states, mpc_inputs, mpc_costs = sim.run(ic, jnp.zeros((6, horizon)), mpc_simulation, prob, mpc)
+
+        self.assertLess(jnp.abs(mpc_states[:, -1].max()), 0.006)
 
 
 if __name__ == '__main__':
