@@ -1,4 +1,4 @@
-from typing import Callable, NamedTuple, Union, Any
+from typing import Callable, NamedTuple, Union, Any, Optional
 
 import jax
 import jax.numpy as jnp
@@ -28,19 +28,28 @@ class Quadratic(NamedTuple):
     Q: jnp.ndarray
     R: jnp.ndarray
     Qf: jnp.ndarray
+    state_offset: Optional[jnp.ndarray]
+    input_offset: Optional[jnp.ndarray]
 
 
-def quadratic(Q: jnp.ndarray, R: jnp.ndarray, Qf: jnp.ndarray) -> Objective:
+def quadratic(Q: jnp.ndarray, R: jnp.ndarray, Qf: jnp.ndarray,
+              state_offset: Optional[jnp.ndarray] = None, input_offset: Optional[jnp.ndarray] = None) -> Objective:
+    if state_offset is None:
+        state_offset = jnp.zeros(Q.shape[0])
+
+    if input_offset is None:
+        input_offset = jnp.zeros(R.shape[0])
+
     @jax.jit
     def trajectory_obj(x: State, u: Input, t: int, params: Quadratic) -> float:
-        Q, R, _ = params
+        Q, R, _, state_offset, input_offset = params
 
-        return 0.5 * x.T @ Q @ x + 0.5 * u.T @ R @ u
+        return 0.5 * (x - state_offset).T @ Q @ (x - state_offset) + 0.5 * (u - input_offset).T @ R @ (u - input_offset)
 
     @jax.jit
     def terminal_obj(x: State, params: Quadratic) -> float:
-        _, _, Qf = params
+        _, _, Qf, state_offset, input_offset = params
 
-        return 0.5 * x.T @ Qf @ x
+        return 0.5 * (x - state_offset).T @ Qf @ (x - state_offset)
 
-    return Objective(trajectory_obj, terminal_obj, Quadratic(Q, R, Qf))
+    return Objective(trajectory_obj, terminal_obj, Quadratic(Q, R, Qf, state_offset, input_offset))
