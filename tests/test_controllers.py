@@ -75,6 +75,32 @@ class ControllerTests(unittest.TestCase):
             self.assertAlmostEqual(ctl.lqr.cost_to_go(x, t, prob),
                                    ctl.util.cost_of_control_sequence(x, t, appended_inputs, prob), places=3)
 
+    def test_lqbr(self):
+        ic = jnp.array([1.0, -1.0, 0.0, 0.0, 0.0, 0.0])
+        horizon = 25
+        inv_temp = 100.0
+        key = jax.random.PRNGKey(0)
+
+        prob = make_lin_sys(ic, horizon)
+
+        lqr = ctl.lqr.create(prob)
+        lqr_sim = sim.compile_simulation(prob, lqr)
+
+        # with jax.disable_jit():
+        lqr_states, lqr_inputs, lqr_costs = sim.run(ic, jnp.zeros((6, horizon)), lqr_sim, prob, lqr)
+
+        key, subkey = jax.random.split(key)
+        prior_params = [dst.GaussianParams(lqr_inputs[:, t], 1 * jnp.eye(2)) for t in range(horizon)]
+        lqbr = ctl.lqbr.create(prob, prior_params, inv_temp, key)
+        lqbr_sim = sim.compile_simulation(prob, lqbr)
+
+        #with jax.disable_jit():
+        lqbr_states, lqbr_inputs, lqbr_costs = sim.run(ic, jnp.zeros((6, horizon)), lqbr_sim, prob, lqbr)
+
+        pass
+
+
+
     def test_isc(self):
         ic = jnp.array([1.0, -1.0, 0.0, 0.0, 0.0, 0.0])
         horizon = 5
