@@ -8,6 +8,7 @@ from jax.experimental import optimizers
 
 
 Kernel = Callable[[jnp.ndarray, jnp.ndarray, jnp.ndarray], float]
+Statistic = Union[Callable[[jnp.ndarray], jnp.ndarray], Callable[[jnp.ndarray], float]]
 
 
 @partial(jax.jit, static_argnums=0)
@@ -96,12 +97,32 @@ def rbf_dyn_bw_kernel(x: jnp.ndarray, y: jnp.ndarray, samples: jnp.array, m: int
 
 
 @partial(jax.jit, static_argnums=(0, 1))
-def impsamp(log_prob: Callable[[jnp.ndarray], float],
-            statistic: Union[Callable[[jnp.ndarray], jnp.ndarray], Callable[[jnp.ndarray], float]],
-            samples: jnp.ndarray) -> Union[float, jnp.ndarray]:
-    logits = jax.vmap(log_prob, in_axes=-1)(samples)
+def impsamp(weight: Callable[[jnp.ndarray], float],
+            statistic: Statistic, samples: jnp.ndarray) -> Union[float, jnp.ndarray]:
+    """
+    Perform (self-normalized) importance sampling on a data set to compute a statistic of the data.
 
-    return jnp.average(jax.vmap(statistic, in_axes=-1, out_axes=-1)(samples), axis=-1, weights=jnp.exp(logits))
+    See "Machine Learning: A Probabilistic Perspective" by Murphy for background on importance sampling.
+
+    Given a target distribution p(x) and a sampling distribution q(x), we would like to evaluate the mean of a
+    statistic f(X) for p(x) using samples from q(x). To do so, define the IS weight function w(x) = p(x)/q(x).
+    Then the mean of interest is approximated
+
+        mean of f(x) = sum of f(x)w(x) over x / sum of w(x) over x.
+
+    Moreover, w(x) only needs to be proportional to the ratio p(x)/q(x). When p(x) is a Gibbs measure with Hamiltonian
+    H(x) and inverse temperature beta, the weight function is proportional to w(x) = exp(-beta * H(x)).
+
+    :param weight: The importance sampling weight function w(x) that maps an n-dimensional x to a float.
+    :param statistic: The function defining the statistic to be computed (see `Statistic` type for details).
+    :param samples: An n-by-m array of samples. Each of the m samples is a column of the array.
+
+    :return: The statistic, which may be an array of arbitrary size.
+    """
+    weights = jax.vmap(weight, in_axes=-1)(samples)
+    statistic = jax.vmap(statistic, in_axes=-1, out_axes=-1)(samples)
+
+    return jnp.average(statistic, axis=-1, weights=weights)
 
 
 @partial(jax.jit, static_argnums=(0,))
@@ -110,7 +131,7 @@ def sir(log_prob: Callable[[jnp.ndarray], float],
         key: jnp.ndarray,
         returned_samples: int = 1) -> jnp.ndarray:
     """
-    Perform importance sampling (or sampling importance resampling) on a data set.
+    Perform sampling importance resampling on a data set.
 
     See "Machine Learning: A Probabilistic Perspective" by Murphy for background on importance resampling.
 
@@ -161,6 +182,7 @@ def sgvd(log_prob: Callable[[jnp.ndarray], float],
     :param samples: An n-by-N array where each column is a sample in n-dimensional space. These samples are used
                     as the initial condition for the algorithm.
     :param iters: The number of optimization steps to take.
+
     :return: All samples from the (approximate) target distribution are returned.
     """
     lp_grad = jax.jit(jax.grad(log_prob))
@@ -170,6 +192,14 @@ def sgvd(log_prob: Callable[[jnp.ndarray], float],
 
     @jax.jit
     def kl_grad(particle: jnp.ndarray, batch: jnp.ndarray) -> jnp.ndarray:
+        """
+        Computes the gradient with respect to a single particle for SVMPC.
+
+        :param particle: The n-dimensional particle whose gradient is computed.
+        :param batch: The whole batch of particles as n-by-N array, where N is the number of particles in the batch.
+
+        :return: The gradient as an n-dimensional array.
+        """
         kern_values = jax.vmap(lambda x: kernel(x, particle, batch), in_axes=1)(batch)
         lp_grad_values = jax.vmap(lp_grad, in_axes=1, out_axes=1)(batch)
         kern_grad_values = jax.vmap(lambda x: kern_grad(x, particle, batch), in_axes=1, out_axes=1)(batch)
