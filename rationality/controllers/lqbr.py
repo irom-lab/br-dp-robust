@@ -1,6 +1,8 @@
 import jax
 import jax.numpy as jnp
 
+from typing import Optional
+
 from rationality.controllers.types import *
 from rationality.distributions import GaussianParams, gaussian
 
@@ -78,7 +80,39 @@ def lqbr_prototype(state: State, t: int, controller_state: LQBRControllerState,
     return K @ state + gaussian(dist_params.mean, dist_params.cov).sample(1, subkey).flatten(), key
 
 
-def cost_to_go(state: State, t: int, prior_means: jnp.ndarray, prior_covs: jnp.ndarray, prob: Problem) -> float:
-    temporal_info, _ = lqbr_dynamic_programming(prob.params, prior_means, prior_covs, prob.prototype.horizon)
+def cost_to_go(lqbr: Controller, problem_params: ProblemParams, state: State, t: int,
+               init_state_cov: Optional[jnp.ndarray] = None, noise_cov: Optional[jnp.ndarray] = None) -> float:
+    _, temporal_info = lqbr.init(problem_params)
+    Q, R, Qf, _, _ = problem_params.objective
+    A, B = problem_params.dynamics
+    n, m = B.shape
+    horizon = temporal_info[0].shape[0]
 
-    return jnp.nan
+    if noise_cov is None:
+        noise_cov = jnp.zeros((n, n, horizon - t))
+
+    if init_state_cov is None:
+        init_state_cov = jnp.zeros((n, n))
+
+    noise_cov = jnp.moveaxis(noise_cov, 2, 0)
+    augmented_temporal_info = (jnp.moveaxis(noise_cov, 2, 0), temporal_info[0], temporal_info[1][0], temporal_info[1][1])
+
+    @jax.jit
+    def cost_to_go_scanner(carry: tuple[jnp.ndarray, jnp.ndarray],
+                           temporal_info: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]) -> tuple[tuple[jnp.ndarray, jnp.ndarray], float]:
+        x_bar, Sigma_x = carry
+        Sigma_noise, K, eta_bar, Sigma_eta = temporal_info
+
+        Sigma_u = K @ (Sigma_x + Sigma_noise) @ K.T + Sigma_eta
+        u_bar = K @ x_bar + eta_bar
+
+        cost = x_bar.T @ Q @ x_bar + u_bar.T @ R @ u_bar + jnp.trace(Q @ Sigma_x) + jnp.trace(R @ Sigma_u)
+
+        return (A @ x_bar + B @ u_bar, A @ Sigma_x @ A.T + B @ Sigma_u @ B.T), cost
+
+    carry, costs = jax.lax.scan(cost_to_go_scanner, (state, init_state_cov), augmented_temporal_info)
+    x_bar, Sigma_x = carry
+
+    terminal_cost = x_bar.T @ Qf @ x_bar + jnp.trace(Qf @ Sigma_x)
+
+    return costs.sum() + terminal_cost
