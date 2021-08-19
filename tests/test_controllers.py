@@ -119,8 +119,7 @@ class ControllerTests(unittest.TestCase):
         key, subkey = jax.random.split(key)
         samples = dst.gaussian(*is_prior_params).sample(is_samples, subkey)
 
-        approx_mean =  inf.impsamp(lambda u: jnp.exp(-inv_temp * cost_of_control_sequence(ic, 0, u.reshape((2, -1), order='F'))),
-                                  lambda u: u[:2], samples)
+        approx_mean =  inf.impsamp(lambda u: jnp.exp(-inv_temp * cost_of_control_sequence(ic, 0, u.reshape((2, -1), order='F'))), lambda u: u[:2], samples)
 
         approx_cov = inf.impsamp(
             lambda u: jnp.exp(-inv_temp * cost_of_control_sequence(ic, 0, u.reshape((2, -1), order='F'))),
@@ -138,6 +137,33 @@ class ControllerTests(unittest.TestCase):
 
         self.assertLess(jnp.linalg.norm(exact_mean - approx_mean), 0.18)
         self.assertLess(jnp.linalg.norm(exact_cov - approx_cov, ord='fro'), 0.15)
+
+    def test_lqbr_cost_to_go(self):
+        ic = jnp.array([1.0, -1.0, 0.0, 0.0, 0.0, 0.0])
+        prior_ic = jnp.array([1.5, -1.5, 0.0, 0.0, 0.0, 0.0])
+        horizon = 5
+        inv_temp = 5.0
+        trials = 1000000
+
+        prob = make_lin_sys(ic, horizon)
+
+        lqr = ctl.lqr.create(prob)
+        lqr_sim = sim.compile_simulation(prob, lqr)
+        lqr_states, lqr_inputs, lqr_costs = sim.run(prior_ic, jnp.zeros((6, horizon)), lqr_sim, prob, lqr)
+
+        key = jax.random.PRNGKey(0)
+        prior_params = [dst.GaussianParams(lqr_inputs[:, t], 10 * jnp.eye(2)) for t in range(horizon)]
+        lqbr = ctl.lqbr.create(prob, prior_params, inv_temp, key)
+        lqbr_sim = sim.compile_simulation(prob, lqbr)
+
+        expected_ctg = ctl.lqbr.cost_to_go(lqbr, prob.params, ic, 0)
+
+        states, inputs, costs = jax.vmap(lambda subkey: lqbr_sim(ic, jnp.zeros((6, horizon)),
+                                                                         prob.params, ctl.lqbr.LQBRParams(inv_temp, subkey, lqbr.params.prior_params)),
+                                         in_axes=0, out_axes=-1)(jax.random.split(key, trials))
+
+        self.assertLess(jnp.abs(expected_ctg - costs.sum(axis=0).mean()), 1)
+
 
     def test_isc(self):
         ic = jnp.array([1.0, -1.0, 0.0, 0.0, 0.0, 0.0])
