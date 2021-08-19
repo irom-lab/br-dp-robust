@@ -11,13 +11,15 @@ LQBRControllerState = jnp.ndarray
 class LQBRParams(NamedTuple):
     inv_temp: float
     init_key: jnp.ndarray
-    prior_params: list[GaussianParams]
+    prior_params: GaussianParams
 
 
 def create(prob: Problem, prior_params: list[GaussianParams],
            inv_temp: float, init_key: jnp.ndarray) -> Controller:
+    prior_params_for_scanning = (jnp.stack([p.mean for p in prior_params]), jnp.stack([p.cov for p in prior_params]))
+
     return Controller(jax.jit(lambda prob_params, params: lqbr_init_prototype(prob_params,
-                                                                              LQBRParams(inv_temp, init_key, prior_params),
+                                                                              LQBRParams(inv_temp, init_key, prior_params_for_scanning),
                                                                               prob.prototype.horizon)),
                       lqbr_prototype, None)
 
@@ -33,13 +35,13 @@ def lqbr_scanner(carry: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
 
     Sigma_eta_inv = inv_temp * B.T @ P @ B + inv_temp * R + prior_cov_inv
     Sigma_eta = jnp.linalg.inv(Sigma_eta_inv)
-    eta_bar = -Sigma_eta_inv @ (prior_cov_inv @ prior_mean + inv_temp * B.T @ b)
+    eta_bar = -Sigma_eta @ (inv_temp * B.T @ b - prior_cov_inv @ prior_mean)
 
-    K = -Sigma_eta @ B.T @ P @ A
+    K = -inv_temp * Sigma_eta @ B.T @ P @ A
 
-    P_next = Q + K.T @ R @ K + A.T @ P @ A + K.T @ B.T @ P @ B @ K + 0.5 * (A.T @ P @ B @ K + K.T @ B.T @ P @ A)
-    b_next = eta_bar.reshape((1, -1)) @ (R @ K + B.T @ P @ A + B.T @ P @ A @ K) + b.reshape((1, -1)) @ (A + B @ K)
-    d_next = d + 0.5 * eta_bar @ (R + B.T @ P @ B) @ eta_bar + b @ P @ eta_bar + 0.5 * jnp.trace((R + B.T @ P @ B) @ Sigma_eta)
+    P_next = Q + K.T @ R @ K + A.T @ P @ A + A.T @ P @ B @ K
+    b_next = eta_bar.reshape((1, -1)) @ (R @ K + B.T @ P @ A + B.T @ P @ B @ K) + b.reshape((1, -1)) @ (A + B @ K)
+    d_next = d + 0.5 * eta_bar @ (R + B.T @ P @ B) @ eta_bar + b.T @ B @ eta_bar + 0.5 * jnp.trace((R + B.T @ P @ B) @ Sigma_eta)
 
     return (P_next, b_next.flatten(), d_next), (K, GaussianParams(eta_bar, Sigma_eta))
 
@@ -48,7 +50,7 @@ def lqbr_dynamic_programming(prob_params: ProblemParams, params: LQBRParams,
                              horizon: int) -> tuple[LQBRTemporalInfo, tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
     dynamics, objective = prob_params
     A, B = dynamics
-    Q, R, Qf = objective
+    Q, R, Qf, _, _ = objective
 
     n, m = B.shape
 
@@ -73,7 +75,7 @@ def lqbr_prototype(state: State, t: int, controller_state: LQBRControllerState,
     K, dist_params = temporal_info
     key, subkey = jax.random.split(controller_state)
 
-    return K @ state + gaussian(dist_params.mean, dist_params.cov).sample(1, subkey), key
+    return K @ state + gaussian(dist_params.mean, dist_params.cov).sample(1, subkey).flatten(), key
 
 
 def cost_to_go(state: State, t: int, prior_means: jnp.ndarray, prior_covs: jnp.ndarray, prob: Problem) -> float:
