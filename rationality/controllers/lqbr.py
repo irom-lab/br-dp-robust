@@ -18,12 +18,12 @@ class LQBRParams(NamedTuple):
 
 def create(prob: Problem, prior_params: list[GaussianParams],
            inv_temp: float, init_key: jnp.ndarray) -> Controller:
-    prior_params_for_scanning = (jnp.stack([p.mean for p in prior_params]), jnp.stack([p.cov for p in prior_params]))
+    prior_params_for_scanning = GaussianParams(jnp.stack([p.mean for p in prior_params]), jnp.stack([p.cov for p in prior_params]))
 
     return Controller(jax.jit(lambda prob_params, params: lqbr_init_prototype(prob_params,
-                                                                              LQBRParams(inv_temp, init_key, prior_params_for_scanning),
+                                                                              LQBRParams(params.inv_temp, params.init_key, prior_params_for_scanning),
                                                                               prob.prototype.horizon)),
-                      lqbr_prototype, None)
+                      lqbr_prototype, LQBRParams(inv_temp, init_key, prior_params_for_scanning))
 
 
 @jax.jit
@@ -94,8 +94,7 @@ def cost_to_go(lqbr: Controller, problem_params: ProblemParams, state: State, t:
     if init_state_cov is None:
         init_state_cov = jnp.zeros((n, n))
 
-    noise_cov = jnp.moveaxis(noise_cov, 2, 0)
-    augmented_temporal_info = (jnp.moveaxis(noise_cov, 2, 0), temporal_info[0], temporal_info[1][0], temporal_info[1][1])
+    augmented_temporal_info = (jnp.transpose(noise_cov, [2, 1, 0]), temporal_info[0], temporal_info[1][0], temporal_info[1][1])
 
     @jax.jit
     def cost_to_go_scanner(carry: tuple[jnp.ndarray, jnp.ndarray],
@@ -106,13 +105,13 @@ def cost_to_go(lqbr: Controller, problem_params: ProblemParams, state: State, t:
         Sigma_u = K @ (Sigma_x + Sigma_noise) @ K.T + Sigma_eta
         u_bar = K @ x_bar + eta_bar
 
-        cost = x_bar.T @ Q @ x_bar + u_bar.T @ R @ u_bar + jnp.trace(Q @ Sigma_x) + jnp.trace(R @ Sigma_u)
+        cost = 0.5 * (x_bar.T @ Q @ x_bar + u_bar.T @ R @ u_bar + jnp.trace(Q @ Sigma_x) + jnp.trace(R @ Sigma_u))
 
         return (A @ x_bar + B @ u_bar, A @ Sigma_x @ A.T + B @ Sigma_u @ B.T), cost
 
     carry, costs = jax.lax.scan(cost_to_go_scanner, (state, init_state_cov), augmented_temporal_info)
     x_bar, Sigma_x = carry
 
-    terminal_cost = x_bar.T @ Qf @ x_bar + jnp.trace(Qf @ Sigma_x)
+    terminal_cost = 0.5 * (x_bar.T @ Qf @ x_bar + jnp.trace(Qf @ Sigma_x))
 
     return costs.sum() + terminal_cost
