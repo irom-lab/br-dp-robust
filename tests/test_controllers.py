@@ -10,6 +10,7 @@ import rationality.dynamics as dyn
 import rationality.objectives as obj
 import rationality.simulate as sim
 import rationality.distributions as dst
+import rationality.inference as inf
 
 
 def make_lin_sys(ic: jnp.ndarray, horizon: int) -> ctl.Problem:
@@ -75,10 +76,10 @@ class ControllerTests(unittest.TestCase):
             self.assertAlmostEqual(ctl.lqr.cost_to_go(x, t, prob),
                                    ctl.util.cost_of_control_sequence(x, t, appended_inputs, prob), places=3)
 
-    def test_lqbr(self):
+    def test_lqbr_vs_lqr(self):
         ic = jnp.array([1.0, -1.0, 0.0, 0.0, 0.0, 0.0])
         horizon = 25
-        inv_temp = 100.0
+        inv_temp = 1000.0
         key = jax.random.PRNGKey(0)
 
         prob = make_lin_sys(ic, horizon)
@@ -86,20 +87,57 @@ class ControllerTests(unittest.TestCase):
         lqr = ctl.lqr.create(prob)
         lqr_sim = sim.compile_simulation(prob, lqr)
 
-        # with jax.disable_jit():
         lqr_states, lqr_inputs, lqr_costs = sim.run(ic, jnp.zeros((6, horizon)), lqr_sim, prob, lqr)
 
         key, subkey = jax.random.split(key)
-        prior_params = [dst.GaussianParams(lqr_inputs[:, t], 1 * jnp.eye(2)) for t in range(horizon)]
+        prior_params = [dst.GaussianParams(lqr_inputs[:, t], 10 * jnp.eye(2)) for t in range(horizon)]
         lqbr = ctl.lqbr.create(prob, prior_params, inv_temp, key)
         lqbr_sim = sim.compile_simulation(prob, lqbr)
 
-        #with jax.disable_jit():
         lqbr_states, lqbr_inputs, lqbr_costs = sim.run(ic, jnp.zeros((6, horizon)), lqbr_sim, prob, lqbr)
 
-        pass
+        self.assertLess(lqbr_costs.sum() - lqr_costs.sum(), 0.25)
 
+    def test_lqbr_vs_is(self):
+        ic = jnp.array([1.0, -1.0, 0.0, 0.0, 0.0, 0.0])
+        prior_ic = jnp.array([1.5, -1.5, 0.0, 0.0, 0.0, 0.0])
+        horizon = 2
+        inv_temp = 1.0
+        is_samples = 1000000
 
+        prob = make_lin_sys(ic, horizon)
+        cost_of_control_sequence = ctl.util.compile_cost_of_control_sequence(prob)
+
+        lqr = ctl.lqr.create(prob)
+        lqr_sim = sim.compile_simulation(prob, lqr)
+        lqr_states, lqr_inputs, lqr_costs = sim.run(prior_ic, jnp.zeros((6, horizon)), lqr_sim, prob, lqr)
+
+        prior_params = [dst.GaussianParams(lqr_inputs[:, t], 1.0 * jnp.eye(2)) for t in range(horizon)]
+        is_prior_params = dst.GaussianParams(lqr_inputs.flatten(order='F'), 1.0 * jnp.eye(2 * horizon))
+
+        key = jax.random.PRNGKey(0)
+        key, subkey = jax.random.split(key)
+        samples = dst.gaussian(*is_prior_params).sample(is_samples, subkey)
+
+        approx_mean =  inf.impsamp(lambda u: jnp.exp(-inv_temp * cost_of_control_sequence(ic, 0, u.reshape((2, -1), order='F'))),
+                                  lambda u: u[:2], samples)
+
+        approx_cov = inf.impsamp(
+            lambda u: jnp.exp(-inv_temp * cost_of_control_sequence(ic, 0, u.reshape((2, -1), order='F'))),
+            lambda u: (u[:2].reshape((-1, 1)) @ u[:2].reshape((1, -1)) - approx_mean.reshape((-1, 1)) @ approx_mean.reshape((1, -1))), samples)
+
+        key, subkey = jax.random.split(key)
+        lqbr = ctl.lqbr.create(prob, prior_params, inv_temp, key)
+
+        _, temp_info = lqbr.init(prob.params)
+        exact_mean = temp_info[0][0, :, :] @ ic + temp_info[1][0][0, :]
+        exact_cov = temp_info[1][1][0, :, :]
+
+        lqbr_sim = sim.compile_simulation(prob, lqbr)
+        lqbr_states, lqbr_inputs, lqbr_costs = sim.run(ic, jnp.zeros((6, horizon)), lqbr_sim, prob, lqbr)
+
+        self.assertLess(jnp.linalg.norm(exact_mean - approx_mean), 0.18)
+        self.assertLess(jnp.linalg.norm(exact_cov - approx_cov, ord='fro'), 0.15)
 
     def test_isc(self):
         ic = jnp.array([1.0, -1.0, 0.0, 0.0, 0.0, 0.0])
