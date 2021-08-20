@@ -141,8 +141,8 @@ class ControllerTests(unittest.TestCase):
     def test_lqbr_cost_to_go(self):
         ic = jnp.array([1.0, -1.0, 0.0, 0.0, 0.0, 0.0])
         prior_ic = jnp.array([1.5, -1.5, 0.0, 0.0, 0.0, 0.0])
-        horizon = 5
-        inv_temp = 5.0
+        horizon = 25
+        inv_temp = 1.0
         trials = 1000000
 
         prob = make_lin_sys(ic, horizon)
@@ -156,13 +156,14 @@ class ControllerTests(unittest.TestCase):
         lqbr = ctl.lqbr.create(prob, prior_params, inv_temp, key)
         lqbr_sim = sim.compile_simulation(prob, lqbr)
 
-        expected_ctg = ctl.lqbr.cost_to_go(lqbr, prob.params, ic, 0)
+
+        expected_ctg = ctl.lqbr.cost_to_go(prob, lqbr.params, ic)
 
         states, inputs, costs = jax.vmap(lambda subkey: lqbr_sim(ic, jnp.zeros((6, horizon)),
                                                                          prob.params, ctl.lqbr.LQBRParams(inv_temp, subkey, lqbr.params.prior_params)),
                                          in_axes=0, out_axes=-1)(jax.random.split(key, trials))
 
-        self.assertLess(jnp.abs(expected_ctg - costs.sum(axis=0).mean()), 1)
+        self.assertLess(jnp.abs(expected_ctg - costs.sum(axis=0).mean()), 0.005)
 
 
     def test_isc(self):

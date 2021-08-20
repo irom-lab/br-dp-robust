@@ -80,13 +80,13 @@ def lqbr_prototype(state: State, t: int, controller_state: LQBRControllerState,
     return K @ state + gaussian(dist_params.mean, dist_params.cov).sample(1, subkey).flatten(), key
 
 
-def cost_to_go(lqbr: Controller, problem_params: ProblemParams, state: State, t: int,
-               init_state_cov: Optional[jnp.ndarray] = None, noise_cov: Optional[jnp.ndarray] = None) -> float:
-    _, temporal_info = lqbr.init(problem_params)
-    Q, R, Qf, _, _ = problem_params.objective
-    A, B = problem_params.dynamics
+def cost_to_go(prob: Problem, params: LQBRParams, state: State,
+               init_state_cov: Optional[jnp.ndarray] = None, noise_cov: Optional[jnp.ndarray] = None, t: int = 0) -> float:
+    temporal_info, _ = lqbr_dynamic_programming(prob.params, params, prob.prototype.horizon)
+    Q, R, Qf, _, _ = prob.params.objective
+    A, B = prob.params.dynamics
     n, m = B.shape
-    horizon = temporal_info[0].shape[0]
+    horizon = prob.prototype.horizon
 
     if noise_cov is None:
         noise_cov = jnp.zeros((n, n, horizon - t))
@@ -107,7 +107,10 @@ def cost_to_go(lqbr: Controller, problem_params: ProblemParams, state: State, t:
 
         cost = 0.5 * (x_bar.T @ Q @ x_bar + u_bar.T @ R @ u_bar + jnp.trace(Q @ Sigma_x) + jnp.trace(R @ Sigma_u))
 
-        return (A @ x_bar + B @ u_bar, A @ Sigma_x @ A.T + B @ Sigma_u @ B.T), cost
+        new_state_mean = A @ x_bar + B @ u_bar
+        new_state_cov = (A + B @ K) @ Sigma_x @ (A + B @ K).T + B @ Sigma_eta @ B.T + B @ K @ Sigma_noise @ K.T @ B.T
+
+        return (new_state_mean, new_state_cov), cost
 
     carry, costs = jax.lax.scan(cost_to_go_scanner, (state, init_state_cov), augmented_temporal_info)
     x_bar, Sigma_x = carry
