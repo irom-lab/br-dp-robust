@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 
-from typing import Optional
+from typing import Optional, Union
 
 from rationality.controllers.types import *
 from rationality.distributions import GaussianParams, gaussian
@@ -16,9 +16,14 @@ class LQBRParams(NamedTuple):
     prior_params: GaussianParams
 
 
-def create(prob: Problem, prior_params: list[GaussianParams],
+def create(prob: Problem, prior_params: Union[list[GaussianParams], GaussianParams],
            inv_temp: float, init_key: jnp.ndarray) -> Controller:
-    prior_params_for_scanning = GaussianParams(jnp.stack([p.mean for p in prior_params]), jnp.stack([p.cov for p in prior_params]))
+    if type(prior_params) == list:
+        prior_params_for_scanning = GaussianParams(jnp.stack([p.mean for p in prior_params]), jnp.stack([p.cov for p in prior_params]))
+    elif type(prior_params) == GaussianParams:
+        prior_params_for_scanning = prior_params
+    else:
+        raise TypeError('Expected `prior_params` to be either `list[GaussianParams]` or `GaussianParams`.')
 
     return Controller(jax.jit(lambda prob_params, params: lqbr_init_prototype(prob_params,
                                                                               LQBRParams(params.inv_temp, params.init_key, prior_params_for_scanning),
@@ -45,7 +50,9 @@ def lqbr_scanner(carry: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
     b_next = eta_bar.reshape((1, -1)) @ (R @ K + B.T @ P @ A + B.T @ P @ B @ K) + b.reshape((1, -1)) @ (A + B @ K)
     d_next = d + 0.5 * eta_bar @ (R + B.T @ P @ B) @ eta_bar + b.T @ B @ eta_bar + 0.5 * jnp.trace((R + B.T @ P @ B) @ Sigma_eta)
 
-    return (P_next, b_next.flatten(), d_next), (K, GaussianParams(eta_bar, Sigma_eta))
+    value_function_params = (P_next, b_next.flatten(), d_next)
+
+    return value_function_params, (K, GaussianParams(eta_bar, Sigma_eta), carry)
 
 
 def lqbr_dynamic_programming(prob_params: ProblemParams, params: LQBRParams,
@@ -68,7 +75,7 @@ def lqbr_init_prototype(prob_params: ProblemParams,
                         horizon: int) -> tuple[LQBRControllerState, LQBRTemporalInfo]:
     temporal_info, _ = lqbr_dynamic_programming(prob_params, params, horizon)
 
-    return params.init_key, temporal_info
+    return params.init_key, (temporal_info[0], temporal_info[1])
 
 
 @jax.jit
@@ -117,4 +124,36 @@ def cost_to_go(prob: Problem, params: LQBRParams, state: State,
 
     terminal_cost = 0.5 * (x_bar.T @ Qf @ x_bar + jnp.trace(Qf @ Sigma_x))
 
+
     return costs.sum() + terminal_cost
+
+
+@jax.jit
+def lipschitz_scanner(carry: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+                      temporal_info: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
+                      A: jnp.ndarray, B: jnp.ndarray,
+                      Q: jnp.ndarray, R: jnp.ndarray,
+                      inv_temp: float) -> tuple[tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray], float]:
+    P, b, d = carry
+
+    prior_mean, prior_cov, input = temporal_info
+    fro = jnp.linalg.norm(Q + A.T @ P @ A, ord='fro')
+    affine = A.T @ P @ B @ input + A.T @ b
+    lipschitz = jnp.maximum(fro, jnp.linalg.norm(affine, ord=2)).astype(float)
+
+    return lqbr_scanner(carry, GaussianParams(prior_mean, prior_cov), A, B, Q, R, inv_temp)[0], lipschitz
+
+
+def lipschitz_constants(prob: Problem, prior_params: GaussianParams,
+                        inv_temp: float, inputs: jnp.ndarray) -> jnp.ndarray:
+    dynamics, objective = prob.params
+    A, B = dynamics
+    Q, R, Qf, _, _ = objective
+    n, m = B.shape
+
+    init = (Qf, jnp.zeros(n), jnp.array(0.0))
+    _, lipschitz = jax.lax.scan(lambda carry, temporal: lipschitz_scanner(carry, temporal, A, B, Q, R, inv_temp),
+                                init, (prior_params.mean, prior_params.cov, inputs.T),
+                                length=prob.prototype.horizon, reverse=True)
+
+    return lipschitz
