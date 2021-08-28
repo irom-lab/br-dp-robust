@@ -61,19 +61,19 @@ class ControllerTests(unittest.TestCase):
         simulation = sim.compile_simulation(prob, lqr)
         states, inputs, costs = sim.run(ic, jnp.zeros((6, horizon)), simulation, prob, lqr)
 
-        self.assertAlmostEqual(ctl.lqr.cost_to_go(ic, 0, prob), costs.sum(), places=4)
+        self.assertAlmostEqual(ctl.lqr.cost_to_go(prob, ic, t=0), costs.sum(), places=4)
 
         for t in range(horizon):
             x = states[:, t]
 
-            self.assertAlmostEqual(ctl.lqr.cost_to_go(x, t, prob),
+            self.assertAlmostEqual(ctl.lqr.cost_to_go(prob, x, t=t),
                                    ctl.util.cost_of_control_sequence(x, t, inputs[:, t:], prob), places=3)
 
         for t in range(horizon):
             x = states[:, t]
             appended_inputs = jnp.concatenate((inputs[:, t:], jnp.ones((2, 100))), axis=1)
 
-            self.assertAlmostEqual(ctl.lqr.cost_to_go(x, t, prob),
+            self.assertAlmostEqual(ctl.lqr.cost_to_go(prob, x, t=t),
                                    ctl.util.cost_of_control_sequence(x, t, appended_inputs, prob), places=3)
 
     def test_lqbr_vs_lqr(self):
@@ -141,7 +141,7 @@ class ControllerTests(unittest.TestCase):
     def test_lqbr_cost_to_go(self):
         ic = jnp.array([1.0, -1.0, 0.0, 0.0, 0.0, 0.0])
         prior_ic = jnp.array([1.5, -1.5, 0.0, 0.0, 0.0, 0.0])
-        horizon = 25
+        horizon = 50
         inv_temp = 1.0
         trials = 1000000
 
