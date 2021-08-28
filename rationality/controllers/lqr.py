@@ -1,6 +1,10 @@
 import jax
 import jax.numpy as jnp
 
+import rationality.distributions as dst
+
+from typing import Optional
+
 from rationality.controllers.types import *
 
 LQRTemporalInfo = jnp.ndarray
@@ -49,7 +53,71 @@ def lqr_prototype(state: State, t: int, controller_state: LQRControllerState,
     return K @ state, None
 
 
-def cost_to_go(state: State, t: int, prob: Problem) -> float:
-    _, P = lqr_dynamic_programming(prob.params, prob.prototype.horizon - t)
+def rollout_scanner(carry: tuple[jnp.ndarray, jnp.ndarray],
+                    temporal_info: tuple[jnp.ndarray, jnp.ndarray], prob: Problem) -> tuple[tuple[jnp.ndarray, jnp.ndarray],
+                                                                                            tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
+    Q, R, Qf, _, _ = prob.params.objective
+    A, B = prob.params.dynamics
 
-    return 0.5 * state.T @ P @ state
+    x_bar, Sigma_x = carry
+    Sigma_noise, K = temporal_info
+
+    Sigma_u = K @ (Sigma_x + Sigma_noise) @ K.T
+    u_bar = K @ x_bar
+
+    cost = 0.5 * (x_bar.T @ Q @ x_bar + u_bar.T @ R @ u_bar + jnp.trace(Q @ Sigma_x) + jnp.trace(R @ Sigma_u))
+
+    new_state_mean = A @ x_bar + B @ u_bar
+    new_state_cov = (A + B @ K) @ Sigma_x @ (A + B @ K).T + B @ K @ Sigma_noise @ K.T @ B.T
+
+    # Adding the diagonal element to Sigma_u to ensure it is positive-definite for use elsewhere.
+    return (new_state_mean, new_state_cov), (cost, x_bar, Sigma_x, u_bar, Sigma_u + 1e-11 * jnp.eye(prob.prototype.dynamics.num_inputs))
+
+
+def cost_to_go(prob: Problem, state: State,
+               init_state_cov: Optional[jnp.ndarray] = None, noise_cov: Optional[jnp.ndarray] = None, t: int = 0) -> float:
+    horizon = prob.prototype.horizon
+    temporal_info, _ = lqr_dynamic_programming(prob.params, horizon - t)
+    n = prob.prototype.dynamics.num_states
+    _, _, Qf, _, _ = prob.params.objective
+
+    if noise_cov is None:
+        noise_cov = jnp.zeros((n, n, horizon - t))
+
+    if init_state_cov is None:
+        init_state_cov = jnp.zeros((n, n))
+
+    augmented_temporal_info = (jnp.transpose(noise_cov, [2, 1, 0]), temporal_info)
+
+    scanner = jax.jit(lambda c, t: rollout_scanner(c, t, prob))
+
+    carry, temporal = jax.lax.scan(scanner, (state, init_state_cov), augmented_temporal_info)
+    x_bar, Sigma_x = carry
+    costs = temporal[0]
+
+    terminal_cost = 0.5 * (x_bar.T @ Qf @ x_bar + jnp.trace(Qf @ Sigma_x))
+
+    return costs.sum() + terminal_cost
+
+
+def input_stats(prob: Problem, state: State,
+                init_state_cov: Optional[jnp.ndarray] = None,
+                noise_cov: Optional[jnp.ndarray] = None, t: int = 0) -> dst.GaussianParams:
+    horizon = prob.prototype.horizon
+    temporal_info, _ = lqr_dynamic_programming(prob.params, horizon - t)
+    n = prob.prototype.dynamics.num_states
+    _, _, Qf, _, _ = prob.params.objective
+
+    if noise_cov is None:
+        noise_cov = jnp.zeros((n, n, horizon - t))
+
+    if init_state_cov is None:
+        init_state_cov = jnp.zeros((n, n))
+
+    augmented_temporal_info = (jnp.transpose(noise_cov, [2, 1, 0]), temporal_info)
+
+    scanner = jax.jit(lambda c, t: rollout_scanner(c, t, prob))
+
+    carry, temporal = jax.lax.scan(scanner, (state, init_state_cov), augmented_temporal_info)
+
+    return dst.GaussianParams(temporal[3], temporal[4])
