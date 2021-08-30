@@ -18,14 +18,18 @@ class MPCParams(NamedTuple):
     pass
 
 
-def create(prob: Problem, opt: Optimizer, opt_iters: int) -> Controller:
-    cost_of_ctl_seq = util.compile_cost_of_control_sequence(prob)
+def create(prob: Problem, opt: Optimizer, opt_iters: int, initial_inputs: Optional[jnp.ndarray] = None) -> Controller:
+    if initial_inputs is None:
+        initial_inputs = jnp.zeros(prob.prototype.horizon * prob.prototype.dynamics.num_inputs)
+    else:
+        initial_inputs = initial_inputs.flatten(order='F')
 
+    cost_of_ctl_seq = util.compile_cost_of_control_sequence(prob)
     init_mpc = jax.jit(lambda prob_params, mpc_params, key: init_svmpc_prototype(prob_params, mpc_params, key))
 
     mpc = jax.jit(lambda state, t, controller_state, temporal_info, params:
                     mpc_prototype(state, t, controller_state, temporal_info, params,
-                                    prob.prototype, cost_of_ctl_seq, opt, opt_iters))
+                                  prob.prototype, cost_of_ctl_seq, opt, opt_iters, initial_inputs))
 
     return Controller(init_mpc, mpc, MPCParams())
 
@@ -41,18 +45,20 @@ def objective(x: State, t: int, flattened_inputs: Input,
     return util.hamiltonian(x, flattened_inputs, t, prob_proto, cost_of_ctl_seq)
 
 
-@partial(jax.jit, static_argnums=(5, 6, 7, 8, 9, 10, 11, 12))
-def mpc_prototype(state: State, t: int, controller_state: MPCState,
-                  temporal_info: Any, params: MPCParams,
+@partial(jax.jit, static_argnums=(5, 6, 7, 8))
+def mpc_prototype(state: State,
+                  t: int,
+                  controller_state: MPCState,
+                  temporal_info: Any,
+                  params: MPCParams,
                   prob_proto: ProblemPrototype,
                   cost_of_ctl_seq: Callable[[State, int, Input], float],
                   opt: Optimizer,
-                  opt_iters: int) -> tuple[Input, MPCState]:
+                  opt_iters: int,
+                  initial_inputs: jnp.ndarray) -> tuple[Input, MPCState]:
     opt_init, opt_update, get_params = opt
-    initial_inputs = jnp.zeros(prob_proto.dynamics.num_inputs * prob_proto.horizon)
     obj = lambda u: objective(state, t, u, cost_of_ctl_seq, prob_proto)
     obj_grad = jax.jit(jax.grad(obj))
-
 
     @jax.jit
     def step_scanner(opt_state: OptimizerState, step_iter: int) -> tuple[OptimizerState, tuple[float, jnp.ndarray]]:

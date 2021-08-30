@@ -1,4 +1,4 @@
-from typing import Callable, Any, Iterable, NamedTuple
+from typing import Callable, Any, Iterable, NamedTuple, Optional, Any
 
 import jax
 import jax.numpy as jnp
@@ -27,8 +27,15 @@ class Simulation(NamedTuple):
     def run(self, ic: State, est_noise: State, key: jnp.ndarray = rnd.PRNGKey(0)) -> Trajectory:
         return self.simfun(ic, est_noise, self.problem.params, self.controller.params, key)
 
-    def __call__(self, ic: State, est_noise: State, key: jnp.ndarray = rnd.PRNGKey(0)) -> Trajectory:
-        return self.run(ic, est_noise, key)
+    def run_with_params(self, ic: State, est_noise: State, params: Any, key: jnp.ndarray = rnd.PRNGKey(0)) -> Trajectory:
+        return self.simfun(ic, est_noise, self.problem.params, params, key)
+
+    def __call__(self, ic: State, est_noise: State, key: jnp.ndarray = rnd.PRNGKey(0),
+                 with_params: Optional[Any] = None) -> Trajectory:
+        if with_params is None:
+            return self.run(ic, est_noise, key)
+        else:
+            return self.run_with_params(ic, est_noise, key, with_params)
 
 
 def simulation_scanner_prototype(carry: tuple[State, ctl.ControllerState],

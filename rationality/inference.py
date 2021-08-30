@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Callable, Union
+from typing import Callable, Union, Optional, Literal
 
 import jax
 import jax.numpy as jnp
@@ -8,6 +8,7 @@ from jax.experimental import optimizers
 
 
 Kernel = Callable[[jnp.ndarray, jnp.ndarray, jnp.ndarray], float]
+KernelGradient = Callable[[jnp.ndarray, jnp.ndarray, jnp.ndarray], jnp.ndarray]
 Statistic = Union[Callable[[jnp.ndarray], jnp.ndarray], Callable[[jnp.ndarray], float]]
 
 
@@ -41,7 +42,7 @@ def _euclidean(x: jnp.ndarray, y: jnp.ndarray) -> jnp.ndarray:
 def bw_median_rule(samples: jnp.ndarray, m: int) -> float:
     """
     A bandwidth selection heuristic chosen to make the sum of the kernel function over points equal 1, where one input
-    to the kernel is fixed to any point in the data set. Specifically, the bandwidth for m data points is:
+    to the kernel is fixed to any point in the data_good set. Specifically, the bandwidth for m data_good points is:
 
         bandwidth = (median pairwise distance) ^ 2 / log(m).
 
@@ -100,7 +101,7 @@ def rbf_dyn_bw_kernel(x: jnp.ndarray, y: jnp.ndarray, samples: jnp.array, m: int
 def impsamp(weight: Callable[[jnp.ndarray], float],
             statistic: Statistic, samples: jnp.ndarray) -> Union[float, jnp.ndarray]:
     """
-    Perform (self-normalized) importance sampling on a data set to compute a statistic of the data.
+    Perform (self-normalized) importance sampling on a data_good set to compute a statistic of the data_good.
 
     See "Machine Learning: A Probabilistic Perspective" by Murphy for background on importance sampling.
 
@@ -131,7 +132,7 @@ def sir(log_prob: Callable[[jnp.ndarray], float],
         key: jnp.ndarray,
         returned_samples: int = 1) -> jnp.ndarray:
     """
-    Perform sampling importance resampling on a data set.
+    Perform sampling importance resampling on a data_good set.
 
     See "Machine Learning: A Probabilistic Perspective" by Murphy for background on importance resampling.
 
@@ -149,14 +150,17 @@ def sir(log_prob: Callable[[jnp.ndarray], float],
 
 
 # TODO: Change def so samples are along axis -1.
-@partial(jax.jit, static_argnums=(0, 1, 2, 4))
+@partial(jax.jit, static_argnums=(0, 1, 2, 4, 5, 7))
 def sgvd(log_prob: Callable[[jnp.ndarray], float],
          kernel: Kernel,
          opt: optimizers.Optimizer,
          samples: jnp.ndarray,
-         iters: int = 100) -> jnp.ndarray:
+         kern_grad: Optional[KernelGradient] = None,
+         iters: int = 100,
+         clip: float = jnp.inf,
+         clip_ord=2) -> jnp.ndarray:
     """
-    Perform inferance using Stein Variational Gradient Descent.
+    Perform inference using Stein Variational Gradient Descent.
 
     Stein variational gradient descent is an optimization based inference algorithm that
     combines the benefits of MCMC (optimization) and importance sampling (parallelization) methods.
@@ -179,12 +183,16 @@ def sgvd(log_prob: Callable[[jnp.ndarray], float],
     :param opt: The optimization procedure to use.
     :param samples: An n-by-N array where each column is a sample in n-dimensional space. These samples are used
                     as the initial condition for the algorithm.
+    :param kern_grad: Optionally specify the kernel gradient with respect to the first argument manually.
     :param iters: The number of optimization steps to take.
+    :param clip: An optional value to which each particle gradient is clipped.
+    :param clip_ord: Optionally specify the ord for the norm used for clipping. Can be any value accepted by
+                     `jax.numpy.linalg.norm` for the parameter `ord` that specifies a vector norm.
 
     :return: All samples from the (approximate) target distribution are returned.
     """
     lp_grad = jax.jit(jax.grad(log_prob))
-    kern_grad = jax.jit(jax.grad(kernel, argnums=0))
+    kern_grad = jax.jit(jax.grad(kernel, argnums=0)) if kern_grad is None else kern_grad
 
     opt_init, opt_update, get_params = opt
 
@@ -205,10 +213,18 @@ def sgvd(log_prob: Callable[[jnp.ndarray], float],
         return -(jnp.multiply(kern_values, lp_grad_values) + kern_grad_values).mean(axis=1)
 
     @jax.jit
+    def clip_gradient(gradients: jnp.ndarray, clip_value: float) -> jnp.ndarray:
+        norms = jnp.linalg.norm(gradients, axis=0, ord=clip_ord)
+
+        return jnp.where(norms < clip_value, gradients, jnp.multiply(gradients, (clip_value / norms)))
+
+    @jax.jit
     def step_scanner(opt_state: optimizers.OptimizerState, step_iter: int) -> tuple[optimizers.OptimizerState, float]:
         batch = get_params(opt_state)
         kl_grad_full = jax.vmap(lambda x: kl_grad(x, batch), in_axes=1, out_axes=1)
         grad = kl_grad_full(batch)
+
+        grad = clip_gradient(grad, clip)
 
         return opt_update(step_iter, grad, opt_state), 0.0
 

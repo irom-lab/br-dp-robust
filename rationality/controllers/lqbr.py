@@ -1,10 +1,10 @@
 import jax
 import jax.numpy as jnp
 
-from typing import Optional, Union
+from typing import Optional, Union, Iterable
 
 from rationality.controllers.types import *
-from rationality.distributions import GaussianParams, gaussian
+from rationality.distributions import GaussianParams, gaussian, isdistparams
 
 LQBRTemporalInfo = tuple[jnp.ndarray, GaussianParams]
 LQBRControllerState = jnp.ndarray
@@ -15,16 +15,14 @@ class LQBRParams(NamedTuple):
     prior_params: GaussianParams
 
 
-def create(prob: Problem, prior_params: Union[list[GaussianParams], GaussianParams],
+def create(prob: Problem, prior_params: Union[Iterable[GaussianParams], GaussianParams],
            inv_temp: float) -> Controller:
-    if type(prior_params) == list:
-        prior_params_for_scanning = GaussianParams(jnp.stack([p.mean for p in prior_params]), jnp.stack([p.cov for p in prior_params]))
-    elif type(prior_params) == GaussianParams:
-        prior_params_for_scanning = prior_params
-    else:
+    if not isdistparams(prior_params):
+        prior_params = GaussianParams(jnp.stack([p.mean for p in prior_params]), jnp.stack([p.cov for p in prior_params]))
+    elif type(prior_params) != GaussianParams:
         raise TypeError('Expected `prior_params` to be either `list[GaussianParams]` or `GaussianParams`.')
 
-    lqbr_params = LQBRParams(inv_temp, prior_params_for_scanning)
+    lqbr_params = LQBRParams(inv_temp, prior_params)
 
     return Controller(jax.jit(lambda prob_params, params, key: lqbr_init_prototype(prob_params, params, key, prob.prototype.horizon)),
                       lqbr_prototype, lqbr_params)
@@ -147,7 +145,7 @@ def state_distribution(prob: Problem, params: LQBRParams, state: State,
     augmented_temporal_info = (jnp.transpose(noise_cov, [2, 1, 0]), temporal_info[0], temporal_info[1][0], temporal_info[1][1])
 
     @jax.jit
-    def cost_to_go_scanner(carry: GaussianParams, temporal_info: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]) -> tuple[GaussianParams, GaussianParams]:
+    def state_dist_scanner(carry: GaussianParams, temporal_info: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]) -> tuple[GaussianParams, GaussianParams]:
         x_bar, Sigma_x = carry
         Sigma_noise, K, eta_bar, Sigma_eta = temporal_info
 
@@ -158,7 +156,7 @@ def state_distribution(prob: Problem, params: LQBRParams, state: State,
 
         return GaussianParams(new_state_mean, new_state_cov), GaussianParams(x_bar, Sigma_x)
 
-    terminal_dist, stagewise_dists = jax.lax.scan(cost_to_go_scanner, init_dist, augmented_temporal_info)
+    terminal_dist, stagewise_dists = jax.lax.scan(state_dist_scanner, init_dist, augmented_temporal_info)
 
     return GaussianParams(jnp.append(stagewise_dists.mean, terminal_dist.mean.reshape((1, -1)), axis=0),
                           jnp.append(stagewise_dists.cov, jnp.expand_dims(terminal_dist.cov, 0), axis=0))

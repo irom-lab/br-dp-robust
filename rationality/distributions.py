@@ -1,13 +1,16 @@
+from __future__ import annotations
+
 from functools import partial
-from typing import NamedTuple, Callable, Any
+from typing import NamedTuple, Callable, Any, Union
 
 import jax
 import jax.numpy as jnp
 import jax.random as rnd
 import jax.scipy as jsp
 
-SamplePrototype = Callable[[int, jnp.ndarray, Any], jnp.ndarray]
-LogProbPrototype = Callable[[jnp.ndarray, Any], float]
+
+def isdistparams(d: Any) -> bool:
+    return isinstance(d, (GaussianParams,))
 
 
 class DistributionPrototype(NamedTuple):
@@ -18,7 +21,7 @@ class DistributionPrototype(NamedTuple):
 
 class Distribution(NamedTuple):
     prototype: DistributionPrototype
-    params: Any
+    params: DistributionParams
 
     def sample(self, num_samples: int, key: jnp.ndarray) -> jnp.ndarray:
         return self.prototype.sample(num_samples, key, self.params)
@@ -62,3 +65,8 @@ class GaussianPrototype(DistributionPrototype):
 
 def gaussian(mean: jnp.ndarray, cov: jnp.ndarray) -> Gaussian:
     return Gaussian(GaussianPrototype(mean.shape[0]), GaussianParams(mean, cov))
+
+
+DistributionParams = Union[GaussianParams]
+SamplePrototype = Callable[[int, jnp.ndarray, DistributionParams], jnp.ndarray]
+LogProbPrototype = Callable[[jnp.ndarray, DistributionParams], float]

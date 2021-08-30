@@ -6,81 +6,66 @@ import jax.numpy as jnp
 from typing import Tuple, Optional, NamedTuple, Callable
 
 
-class AxisAlignedBoundingBox(NamedTuple):
+class Polytope(NamedTuple):
+    linear: jnp.ndarray
+    affine: jnp.ndarray
     centroid: jnp.ndarray
     dimensions: jnp.ndarray
 
     @jax.jit
     def contains(self, point: jnp.ndarray) -> bool:
-        centered = point - self.centroid
 
-        return jnp.all((centered <= (self.dimensions / 2) + 1e-6) & (-self.dimensions / 2 <= (centered + 1e-6)))
-
-    @jax.jit
-    def project(self, point: jnp.ndarray) -> Tuple[jnp.ndarray, float]:
-        def case_point_not_in_box():
-            centered = point - self.centroid
-            proj = jnp.maximum(jnp.minimum(centered, self.dimensions / 2), -self.dimensions / 2) + self.centroid
-
-            return proj, jnp.linalg.norm(proj - point, ord=2)
-
-        return jax.lax.cond(self.contains(point),
-                            lambda _: (point, 0.0),
-                            lambda _: case_point_not_in_box(),
-                            None)
+        return jnp.all(self.linear @ point <= self.affine + 1e-6)
 
     @jax.jit
     def intersects(self, start: jnp.ndarray, end: jnp.ndarray) -> bool:
         @jax.jit
-        def dimension_scanner(carry: None, dimension_information: jnp.ndarray) -> tuple[None, bool]:
-            s, e, c, d = dimension_information
+        def halfspace_scanner(carry: bool, face_info: tuple[jnp.ndarray, jnp.ndarray]) -> tuple[bool, bool]:
+            a, b = face_info
 
-            A = jnp.stack([jnp.array([s, e]) - c, jnp.ones(2)], axis=-1)
+            l = (b - (a @ end)) / (a @ (start - end))
+            pt = l * start + (1.0 - l) * end
 
-            sln_lower = jnp.linalg.lstsq(A, jnp.array([[-d / 2], [1.0]]), rcond=None)[0].flatten()
-            sln_upper = jnp.linalg.lstsq(A, jnp.array([[d / 2], [1.0]]), rcond=None)[0].flatten()
+            found_intersection = (((0.0 <= l) & (l <= 1.0)) & self.contains(pt))
 
-            sln_lower = sln_lower / sln_lower.sum()
-            sln_upper = sln_upper / sln_upper.sum()
+            return carry | found_intersection, found_intersection
 
-            intersection_found = (sln_lower > 0) and self.contains(jnp.stack([start, end], axis=-1) @ sln_lower)
-            intersection_found &= (sln_upper > 0) and self.contains(jnp.stack([start, end], axis=-1) @ sln_upper)
-
-            return None, intersection_found
-
-        dimensional_info = (start, end, self.centroid, self.dimensions)
-
-        return self.contains(start) or self.contains(end) or \
-               jnp.any(jax.lax.scan(dimension_scanner, None, dimensional_info)[1])
+        return self.contains(start) | self.contains(end) | jax.lax.scan(halfspace_scanner, False, (self.linear, self.affine))[0]
 
 
 class Workspace(NamedTuple):
-    boundary: AxisAlignedBoundingBox
-    obstacles: AxisAlignedBoundingBox
+    boundary: Polytope
+    obstacles: Polytope
 
     @jax.jit
     def freespace_contains_point(self, point: jnp.ndarray) -> bool:
-        return self.boundary.contains(point) and not jnp.any(jax.vmap(jax.jit(lambda c, d: aabb(c, d).contains(point)))(self.obstacles.centroid, self.obstacles.dimensions))
+        return self.boundary.contains(point) & ~jnp.any(jax.vmap(jax.jit(lambda A, b, c, d: Polytope(A, b, c, d).contains(point)))(*self.obstacles))
 
     @jax.jit
     def freespace_contains_segment(self, start: jnp.ndarray, end: jnp.ndarray) -> bool:
-        return self.boundary.contains(start) and self.boundary.contains(end) and not\
-               jax.vmap(jax.jit(lambda c, d: aabb(c, d).intersects(start, end)))(self.obstacles.centroid, self.obstacles.dimensions)
+        return self.boundary.contains(start) & self.boundary.contains(end) &\
+               ~jnp.any(jax.vmap(jax.jit(lambda A, b, c, d: Polytope(A, b, c, d).intersects(start, end)))(*self.obstacles))
 
 
-@jax.jit
-def aabb(centroid: jnp.ndarray, dimensions: jnp.ndarray) -> AxisAlignedBoundingBox:
-    return AxisAlignedBoundingBox(centroid, dimensions)
+def aabb(centroid: jnp.ndarray, dimensions: jnp.ndarray) -> Polytope:
+    n = len(dimensions)
+
+    normals = jnp.array([jnp.zeros(n).at[i].set(1.0) for i in range(n)] + [jnp.zeros(n).at[i].set(-1.0) for i in range(n)])
+    affine = jnp.array([normals[i, :] @ (0.5 * dimensions[i] * normals[i, :] + centroid) for i in range(n)] +
+                       [normals[n + i, :] @ (0.5 * dimensions[i] * normals[n + i, :] + centroid) for i in range(n)])
+
+    return Polytope(normals, affine, centroid, dimensions)
 
 
-def workspace(width: float, height: float, obstacles: list[AxisAlignedBoundingBox]):
-    obstacles = aabb(jnp.stack([o.centroid for o in obstacles]), jnp.stack([o.dimensions for o in obstacles]))
+def workspace(width: float, height: float, obstacles: list[Polytope]):
+    obstacles = Polytope(jnp.stack([o.linear for o in obstacles]), jnp.stack([o.affine for o in obstacles]),
+                         jnp.stack([o.centroid for o in obstacles]), jnp.stack([o.dimensions for o in obstacles]))
 
     return Workspace(aabb(jnp.array([width / 2.0, height / 2.0]), jnp.array([width, height])), obstacles)
 
 
-def draw(aabb: AxisAlignedBoundingBox, ax: plt.Axes, hatch: Optional[str] = None) -> plt.Axes:
-    centroid, dimensions = aabb
+def draw(aabb: Polytope, ax: plt.Axes, hatch: Optional[str] = None) -> plt.Axes:
+    _, _, centroid, dimensions = aabb
 
     verts = jnp.array([[dimensions[0], -dimensions[1]],
                        [-dimensions[0], -dimensions[1]],
@@ -88,7 +73,7 @@ def draw(aabb: AxisAlignedBoundingBox, ax: plt.Axes, hatch: Optional[str] = None
                        [dimensions[0], dimensions[1]]]) / 2 + centroid.reshape((1, -1))
 
     if hatch is not None:
-        ax.add_patch(plt.Polygon(verts, fill=False, edgecolor='k', hatch=hatch))
+        ax.add_patch(plt.Polygon(verts, fill=False, edgecolor='k'))
     else:
         ax.add_patch(plt.Polygon(verts, color='k'))
 

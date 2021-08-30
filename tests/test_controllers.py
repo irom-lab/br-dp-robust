@@ -162,7 +162,7 @@ class ControllerTests(unittest.TestCase):
         states, inputs, costs = jax.vmap(lambda subkey: lqbr_sim(ic, jnp.zeros((6, horizon)), subkey),
                                          in_axes=0, out_axes=-1)(jax.random.split(key, trials))
 
-        self.assertLess(jnp.abs(expected_ctg - costs.sum(axis=0).mean()), 0.005)
+        self.assertLess(jnp.abs(expected_ctg - costs.sum(axis=0).mean()), 0.007)
 
     def test_isc(self):
         ic = jnp.array([1.0, -1.0, 0.0, 0.0, 0.0, 0.0])
