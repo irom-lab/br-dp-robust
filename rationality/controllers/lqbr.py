@@ -128,6 +128,43 @@ def cost_to_go(prob: Problem, params: LQBRParams, state: State,
     return costs.sum() + terminal_cost
 
 
+def state_distribution(prob: Problem, params: LQBRParams, state: State,
+                       init_state_cov: Optional[jnp.ndarray] = None,
+                       noise_cov: Optional[jnp.ndarray] = None, t: int = 0) -> GaussianParams:
+    temporal_info, _ = lqbr_dynamic_programming(prob.params, params, prob.prototype.horizon)
+    Q, R, Qf, _, _ = prob.params.objective
+    A, B = prob.params.dynamics
+    n, m = B.shape
+    horizon = prob.prototype.horizon
+
+    if noise_cov is None:
+        noise_cov = jnp.zeros((n, n, horizon - t))
+
+    if init_state_cov is None:
+        init_state_cov = jnp.zeros((n, n))
+
+    init_dist = GaussianParams(state, init_state_cov)
+
+    augmented_temporal_info = (jnp.transpose(noise_cov, [2, 1, 0]), temporal_info[0], temporal_info[1][0], temporal_info[1][1])
+
+    @jax.jit
+    def cost_to_go_scanner(carry: GaussianParams, temporal_info: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]) -> tuple[GaussianParams, GaussianParams]:
+        x_bar, Sigma_x = carry
+        Sigma_noise, K, eta_bar, Sigma_eta = temporal_info
+
+        u_bar = K @ x_bar + eta_bar
+
+        new_state_mean = A @ x_bar + B @ u_bar
+        new_state_cov = (A + B @ K) @ Sigma_x @ (A + B @ K).T + B @ Sigma_eta @ B.T + B @ K @ Sigma_noise @ K.T @ B.T
+
+        return GaussianParams(new_state_mean, new_state_cov), GaussianParams(x_bar, Sigma_x)
+
+    terminal_dist, stagewise_dists = jax.lax.scan(cost_to_go_scanner, init_dist, augmented_temporal_info)
+
+    return GaussianParams(jnp.append(stagewise_dists.mean, terminal_dist.mean.reshape((1, -1)), axis=0),
+                          jnp.append(stagewise_dists.cov, jnp.expand_dims(terminal_dist.cov, 0), axis=0))
+
+
 @jax.jit
 def lipschitz_scanner(carry: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
                       temporal_info: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
