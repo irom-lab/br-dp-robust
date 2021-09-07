@@ -140,9 +140,7 @@ def sir(log_prob: Callable[[jnp.ndarray], float],
     :param samples: An n-by-m array of samples. Each of the m samples is a column of the array.
     :param key: A PRNGKey used to generate the random sample(s). Can be None if a statistic is provided.
     :param returned_samples: The number of samples to return.
-    :return: If `statistic` is None, then the requested number of samples from the (approximate) target distribution are
-             returned. Otherwise the mean of statistic is computed using the samples from the final approximate
-             distribution and this quantity is returned.
+    :return: The requested number of samples from the (approximate) target distribution.
     """
     logits = jax.vmap(log_prob, in_axes=-1)(samples)
     idxs = rnd.categorical(key, logits=logits, shape=(returned_samples,))
