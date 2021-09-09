@@ -17,7 +17,6 @@ SVMPCState = jnp.ndarray
 
 class SVMPCParams(NamedTuple):
     inv_temp: float
-    init_key: jnp.ndarray
     bandwidth: float
 
 
@@ -26,16 +25,16 @@ def dummy_kernel(x: jnp.ndarray, y: jnp.ndarray, z: jnp.ndarray) -> float:
     return 1.0
 
 
-def create(prob: Problem, inv_temp: float, init_key: jnp.ndarray, bandwidth: Union[str, float], num_samples: int,
+def create(prob: Problem, inv_temp: float, bandwidth: Union[str, float], num_samples: int,
            prior_proto: dst.DistributionPrototype, prior_params: list[tuple],
            opt: Optimizer, opt_iters: int, sir_at_end: bool = False) -> Controller:
     num_prior_params = len(prior_params[0])
     prior_params_for_scanning = tuple(jnp.stack([p[i] for p in prior_params]) for i in range(num_prior_params))
-    params = SVMPCParams(inv_temp, init_key, bandwidth)
+    params = SVMPCParams(inv_temp, bandwidth)
     cost_of_ctl_seq = util.compile_cost_of_control_sequence(prob)
 
-    init_svmpc = jax.jit(lambda prob_params, svmpc_params: init_svmpc_prototype(prob_params, svmpc_params,
-                                                                               prior_params_for_scanning))
+    init_svmpc = jax.jit(lambda prob_params, svmpc_params, key: init_svmpc_prototype(prob_params, svmpc_params, key,
+                                                                                     prior_params_for_scanning))
 
     if bandwidth == 'dynamic':
         kernel = jax.jit(lambda x, y, s: inf.rbf_dyn_bw_kernel(x, y, s, num_samples))
@@ -51,9 +50,9 @@ def create(prob: Problem, inv_temp: float, init_key: jnp.ndarray, bandwidth: Uni
     return Controller(init_svmpc, svmpc, params)
 
 
-def init_svmpc_prototype(params: ProblemParams, svmpc_params: SVMPCParams,
+def init_svmpc_prototype(params: ProblemParams, svmpc_params: SVMPCParams, key: jnp.ndarray,
                          prior_params: Any) -> tuple[SVMPCState, SVMPCTemporalInfo]:
-    return svmpc_params.init_key, prior_params
+    return key, prior_params
 
 
 @partial(jax.jit, static_argnums=(2, 3, 4, 5, 6))

@@ -1,24 +1,45 @@
-from typing import Callable, Any
+from typing import Callable, Any, Iterable, NamedTuple
 
 import jax
 import jax.numpy as jnp
+import jax.random as rnd
+
+import numpy as np
 
 from rationality import controllers as ctl
-from rationality.types import State, Input
+from rationality.types import State, Input, Trajectory
 
-Trajectory = tuple[State, Input, jnp.ndarray]
-Simulation = Callable[[State, State, ctl.ProblemParams, Any], Trajectory]
+
+def collect_trajectories(trajs: Iterable[Trajectory], stack=np.stack) -> Trajectory:
+    return Trajectory(stack([t.states for t in trajs]),
+                      stack([t.inputs for t in trajs]),
+                      stack([t.costs for t in trajs]))
+
+
+SimFun = Callable[[State, State, ctl.ProblemParams, Any, jnp.ndarray], Trajectory]
+
+
+class Simulation(NamedTuple):
+    simfun: SimFun
+    problem: ctl.Problem
+    controller: ctl.Controller
+
+    def run(self, ic: State, est_noise: State, key: jnp.ndarray = rnd.PRNGKey(0)) -> Trajectory:
+        return self.simfun(ic, est_noise, self.problem.params, self.controller.params, key)
+
+    def __call__(self, ic: State, est_noise: State, key: jnp.ndarray = rnd.PRNGKey(0)) -> Trajectory:
+        return self.run(ic, est_noise, key)
 
 
 def simulation_scanner_prototype(carry: tuple[State, ctl.ControllerState],
-                                 slice: tuple[int, ctl.ControllerTemporalInfo],
+                                 temporal: tuple[int, State, ctl.ControllerTemporalInfo],
                                  prob_params: ctl.ProblemParams,
                                  controller_params: Any,
                                  prob_proto: ctl.ProblemPrototype,
                                  controller_prototype: ctl.ControllerPrototype) -> tuple[tuple[State, Input],
                                                                                          tuple[State, Input, float]]:
     state, controller_state = carry
-    t, est_noise, controller_temporal_info = slice
+    t, est_noise, controller_temporal_info = temporal
 
     input, controller_state = controller_prototype(state + est_noise, t, controller_state,
                                                    controller_temporal_info, controller_params)
@@ -34,17 +55,19 @@ def compile_simulation(prob: ctl.Problem, controller: ctl.Controller) -> Simulat
 
     @jax.jit
     def simulation_scanner(carry: tuple[State, ctl.ControllerState],
-                           slice: tuple[int, State, ctl.ControllerTemporalInfo],
+                           temporal: tuple[int, State, ctl.ControllerTemporalInfo],
                            prob_params: ctl.ProblemParams, controller_params: Any):
-        return simulation_scanner_prototype(carry, slice, prob_params, controller_params,
+        return simulation_scanner_prototype(carry, temporal, prob_params, controller_params,
                                             prob.prototype, controller_prototype)
 
-    def simulate(ic: State, est_noise: State, prob_params: ctl.ProblemParams, controller_params: Any) -> Trajectory:
-        init_controller_state, controller_temporal_info = init_controller_prototype(prob_params, controller_params)
+    def simulate(ic: State, est_noise: State,
+                 prob_params: ctl.ProblemParams, controller_params: Any,
+                 key: jnp.ndarray = rnd.PRNGKey(0)) -> Trajectory:
+        init_controller_state, controller_temporal_info = init_controller_prototype(prob_params, controller_params, key)
 
         init_carry = (ic, init_controller_state)
-        final_carry, traj = jax.lax.scan(lambda carry, slice: simulation_scanner(carry, slice, prob_params,
-                                                                                 controller_params),
+        final_carry, traj = jax.lax.scan(lambda carry, temporal: simulation_scanner(carry, temporal, prob_params,
+                                                                                    controller_params),
                                          init_carry, (jnp.arange(horizon), est_noise.T, controller_temporal_info),
                                          length=horizon)
 
@@ -52,12 +75,7 @@ def compile_simulation(prob: ctl.Problem, controller: ctl.Controller) -> Simulat
         states, inputs, costs = traj
         terminal_cost = terminal_objective_prototype(final_state, prob_params.objective)
 
-        return jnp.append(states, final_state.reshape(1, -1), axis=0).T, inputs.T, \
-               jnp.append(costs, terminal_cost)
+        return Trajectory(jnp.append(states, final_state.reshape(1, -1), axis=0).T,
+                          inputs.T, jnp.append(costs, terminal_cost))
 
-    return jax.jit(simulate)
-
-
-def run(ic: State, est_noise: State, sim: Simulation,
-        prob: ctl.Problem, controller: ctl.Controller) -> Trajectory:
-    return sim(ic, est_noise, prob.params, controller.params)
+    return Simulation(jax.jit(simulate), prob, controller)

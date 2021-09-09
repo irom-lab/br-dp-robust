@@ -21,7 +21,7 @@ class MPCParams(NamedTuple):
 def create(prob: Problem, opt: Optimizer, opt_iters: int) -> Controller:
     cost_of_ctl_seq = util.compile_cost_of_control_sequence(prob)
 
-    init_mpc = jax.jit(lambda prob_params, mpc_params: init_svmpc_prototype(prob_params, mpc_params))
+    init_mpc = jax.jit(lambda prob_params, mpc_params, key: init_svmpc_prototype(prob_params, mpc_params, key))
 
     mpc = jax.jit(lambda state, t, controller_state, temporal_info, params:
                     mpc_prototype(state, t, controller_state, temporal_info, params,
@@ -30,7 +30,8 @@ def create(prob: Problem, opt: Optimizer, opt_iters: int) -> Controller:
     return Controller(init_mpc, mpc, MPCParams())
 
 
-def init_svmpc_prototype(params: ProblemParams, svmpc_params: MPCParams) -> tuple[MPCState, MPCTemporalInfo]:
+def init_svmpc_prototype(params: ProblemParams, svmpc_params: MPCParams,
+                         key: jnp.ndarray) -> tuple[MPCState, MPCTemporalInfo]:
     return None, None
 
 

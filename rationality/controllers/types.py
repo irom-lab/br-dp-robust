@@ -4,6 +4,8 @@ import rationality.dynamics as dyn
 import rationality.objectives as obj
 from rationality.types import State, Input
 
+import jax.numpy as jnp
+
 
 class ProblemPrototype(NamedTuple):
     """
@@ -41,7 +43,7 @@ ControllerTemporalInfo = Any
 ControllerPrototype = Callable[[State, int, ControllerState, ControllerTemporalInfo, Any],
                                tuple[Input, ControllerState]]
 
-ControllerInitPrototype = Callable[[ProblemParams, Any], tuple[ControllerState, ControllerTemporalInfo]]
+ControllerInitPrototype = Callable[[ProblemParams, Any, jnp.ndarray], tuple[ControllerState, ControllerTemporalInfo]]
 
 
 class Controller(NamedTuple):
@@ -49,8 +51,8 @@ class Controller(NamedTuple):
     controller_prototype: ControllerPrototype
     params: Any
 
-    def init(self, prob_params: ProblemParams) -> tuple[ControllerState, ControllerTemporalInfo]:
-        return self.init_prototype(prob_params, self.params)
+    def init(self, prob_params: ProblemParams, key: jnp.ndarray) -> tuple[ControllerState, ControllerTemporalInfo]:
+        return self.init_prototype(prob_params, self.params, key)
 
     def __call__(self, state: State, t: int, controller_state: ControllerState,
                  temporal_info: ControllerTemporalInfo) -> tuple[Input, ControllerState]:

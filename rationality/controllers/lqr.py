@@ -13,8 +13,8 @@ LQRParams = None
 
 
 def create(prob: Problem) -> Controller:
-    return Controller(jax.jit(lambda prob_params, params: lqr_init_prototype(prob_params, params,
-                                                                             prob.prototype.horizon)),
+    return Controller(jax.jit(lambda prob_params, params, key: lqr_init_prototype(prob_params, params, key,
+                                                                                  prob.prototype.horizon)),
                       lqr_prototype, None)
 
 
@@ -38,8 +38,8 @@ def lqr_dynamic_programming(prob_params: ProblemParams, horizon: int) -> tuple[j
     return K, P
 
 
-def lqr_init_prototype(prob_params: ProblemParams,
-                       params: LQRParams, horizon: int) -> tuple[LQRControllerState, LQRTemporalInfo]:
+def lqr_init_prototype(prob_params: ProblemParams, params: LQRParams,
+                       key: jnp.ndarray, horizon: int) -> tuple[LQRControllerState, LQRTemporalInfo]:
     K, _ = lqr_dynamic_programming(prob_params, horizon)
 
     return None, K

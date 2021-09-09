@@ -12,12 +12,11 @@ LQBRControllerState = jnp.ndarray
 
 class LQBRParams(NamedTuple):
     inv_temp: float
-    init_key: jnp.ndarray
     prior_params: GaussianParams
 
 
 def create(prob: Problem, prior_params: Union[list[GaussianParams], GaussianParams],
-           inv_temp: float, init_key: jnp.ndarray) -> Controller:
+           inv_temp: float) -> Controller:
     if type(prior_params) == list:
         prior_params_for_scanning = GaussianParams(jnp.stack([p.mean for p in prior_params]), jnp.stack([p.cov for p in prior_params]))
     elif type(prior_params) == GaussianParams:
@@ -25,10 +24,10 @@ def create(prob: Problem, prior_params: Union[list[GaussianParams], GaussianPara
     else:
         raise TypeError('Expected `prior_params` to be either `list[GaussianParams]` or `GaussianParams`.')
 
-    return Controller(jax.jit(lambda prob_params, params: lqbr_init_prototype(prob_params,
-                                                                              LQBRParams(params.inv_temp, params.init_key, prior_params_for_scanning),
-                                                                              prob.prototype.horizon)),
-                      lqbr_prototype, LQBRParams(inv_temp, init_key, prior_params_for_scanning))
+    lqbr_params = LQBRParams(inv_temp, prior_params_for_scanning)
+
+    return Controller(jax.jit(lambda prob_params, params, key: lqbr_init_prototype(prob_params, params, key, prob.prototype.horizon)),
+                      lqbr_prototype, lqbr_params)
 
 
 @jax.jit
@@ -71,11 +70,11 @@ def lqbr_dynamic_programming(prob_params: ProblemParams, params: LQBRParams,
 
 
 def lqbr_init_prototype(prob_params: ProblemParams,
-                        params: LQBRParams,
+                        params: LQBRParams, key: jnp.ndarray,
                         horizon: int) -> tuple[LQBRControllerState, LQBRTemporalInfo]:
     temporal_info, _ = lqbr_dynamic_programming(prob_params, params, horizon)
 
-    return params.init_key, (temporal_info[0], temporal_info[1])
+    return key, (temporal_info[0], temporal_info[1])
 
 
 @jax.jit

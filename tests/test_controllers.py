@@ -59,7 +59,7 @@ class ControllerTests(unittest.TestCase):
         lqr = ctl.lqr.create(prob)
 
         simulation = sim.compile_simulation(prob, lqr)
-        states, inputs, costs = sim.run(ic, jnp.zeros((6, horizon)), simulation, prob, lqr)
+        states, inputs, costs = simulation(ic, jnp.zeros((6, horizon)))
 
         self.assertAlmostEqual(ctl.lqr.cost_to_go(prob, ic, t=0), costs.sum(), places=4)
 
@@ -87,14 +87,14 @@ class ControllerTests(unittest.TestCase):
         lqr = ctl.lqr.create(prob)
         lqr_sim = sim.compile_simulation(prob, lqr)
 
-        lqr_states, lqr_inputs, lqr_costs = sim.run(ic, jnp.zeros((6, horizon)), lqr_sim, prob, lqr)
+        lqr_states, lqr_inputs, lqr_costs = lqr_sim(ic, jnp.zeros((6, horizon)))
 
         key, subkey = jax.random.split(key)
         prior_params = [dst.GaussianParams(lqr_inputs[:, t], 10 * jnp.eye(2)) for t in range(horizon)]
-        lqbr = ctl.lqbr.create(prob, prior_params, inv_temp, key)
+        lqbr = ctl.lqbr.create(prob, prior_params, inv_temp)
         lqbr_sim = sim.compile_simulation(prob, lqbr)
 
-        lqbr_states, lqbr_inputs, lqbr_costs = sim.run(ic, jnp.zeros((6, horizon)), lqbr_sim, prob, lqbr)
+        lqbr_states, lqbr_inputs, lqbr_costs = lqbr_sim(ic, jnp.zeros((6, horizon)), key)
 
         self.assertLess(lqbr_costs.sum() - lqr_costs.sum(), 0.25)
 
@@ -110,7 +110,7 @@ class ControllerTests(unittest.TestCase):
 
         lqr = ctl.lqr.create(prob)
         lqr_sim = sim.compile_simulation(prob, lqr)
-        lqr_states, lqr_inputs, lqr_costs = sim.run(prior_ic, jnp.zeros((6, horizon)), lqr_sim, prob, lqr)
+        lqr_states, lqr_inputs, lqr_costs = lqr_sim(prior_ic, jnp.zeros((6, horizon)))
 
         prior_params = [dst.GaussianParams(lqr_inputs[:, t], 1.0 * jnp.eye(2)) for t in range(horizon)]
         is_prior_params = dst.GaussianParams(lqr_inputs.flatten(order='F'), 1.0 * jnp.eye(2 * horizon))
@@ -126,14 +126,14 @@ class ControllerTests(unittest.TestCase):
             lambda u: (u[:2].reshape((-1, 1)) @ u[:2].reshape((1, -1)) - approx_mean.reshape((-1, 1)) @ approx_mean.reshape((1, -1))), samples)
 
         key, subkey = jax.random.split(key)
-        lqbr = ctl.lqbr.create(prob, prior_params, inv_temp, key)
+        lqbr = ctl.lqbr.create(prob, prior_params, inv_temp)
 
-        _, temp_info = lqbr.init(prob.params)
+        _, temp_info = lqbr.init(prob.params, key)
         exact_mean = temp_info[0][0, :, :] @ ic + temp_info[1][0][0, :]
         exact_cov = temp_info[1][1][0, :, :]
 
         lqbr_sim = sim.compile_simulation(prob, lqbr)
-        lqbr_states, lqbr_inputs, lqbr_costs = sim.run(ic, jnp.zeros((6, horizon)), lqbr_sim, prob, lqbr)
+        lqbr_states, lqbr_inputs, lqbr_costs = lqbr_sim(ic, jnp.zeros((6, horizon)), key)
 
         self.assertLess(jnp.linalg.norm(exact_mean - approx_mean), 0.18)
         self.assertLess(jnp.linalg.norm(exact_cov - approx_cov, ord='fro'), 0.15)
@@ -149,22 +149,20 @@ class ControllerTests(unittest.TestCase):
 
         lqr = ctl.lqr.create(prob)
         lqr_sim = sim.compile_simulation(prob, lqr)
-        lqr_states, lqr_inputs, lqr_costs = sim.run(prior_ic, jnp.zeros((6, horizon)), lqr_sim, prob, lqr)
+        lqr_states, lqr_inputs, lqr_costs = lqr_sim(prior_ic, jnp.zeros((6, horizon)))
 
         key = jax.random.PRNGKey(0)
         prior_params = [dst.GaussianParams(lqr_inputs[:, t], 10 * jnp.eye(2)) for t in range(horizon)]
-        lqbr = ctl.lqbr.create(prob, prior_params, inv_temp, key)
+        lqbr = ctl.lqbr.create(prob, prior_params, inv_temp)
         lqbr_sim = sim.compile_simulation(prob, lqbr)
 
 
         expected_ctg = ctl.lqbr.cost_to_go(prob, lqbr.params, ic)
 
-        states, inputs, costs = jax.vmap(lambda subkey: lqbr_sim(ic, jnp.zeros((6, horizon)),
-                                                                         prob.params, ctl.lqbr.LQBRParams(inv_temp, subkey, lqbr.params.prior_params)),
+        states, inputs, costs = jax.vmap(lambda subkey: lqbr_sim(ic, jnp.zeros((6, horizon)), subkey),
                                          in_axes=0, out_axes=-1)(jax.random.split(key, trials))
 
         self.assertLess(jnp.abs(expected_ctg - costs.sum(axis=0).mean()), 0.005)
-
 
     def test_isc(self):
         ic = jnp.array([1.0, -1.0, 0.0, 0.0, 0.0, 0.0])
@@ -174,8 +172,8 @@ class ControllerTests(unittest.TestCase):
 
         lqr = ctl.lqr.create(prob)
 
-        simulation = sim.compile_simulation(prob, lqr)
-        _, lqr_inputs, lqr_costs = sim.run(ic, jnp.zeros((6, horizon)), simulation, prob, lqr)
+        lqr_sim = sim.compile_simulation(prob, lqr)
+        _, lqr_inputs, lqr_costs = lqr_sim(ic, jnp.zeros((6, horizon)))
 
         cov = jnp.diag(jnp.array([1e-0, 1e-0] * horizon) ** 2)
 
@@ -186,8 +184,8 @@ class ControllerTests(unittest.TestCase):
         isc = ctl.isc.create(prob, jnp.inf, 100000, rnd.PRNGKey(0), dst.GaussianPrototype(prob.num_inputs),
                              prior_params)
 
-        simulation = sim.compile_simulation(prob, isc)
-        _, isc_inputs, isc_costs = sim.run(ic, jnp.zeros((6, horizon)), simulation, prob, isc)
+        isc_sim = sim.compile_simulation(prob, isc)
+        _, isc_inputs, isc_costs = isc_sim(ic, jnp.zeros((6, horizon)))
         self.assertAlmostEqual(isc_costs.sum(), lqr_costs.sum(), places=0)
 
     def test_mpc(self):
@@ -199,11 +197,11 @@ class ControllerTests(unittest.TestCase):
         lqr = ctl.lqr.create(prob)
         mpc = ctl.mpc.create(prob, opt.adam(1e-1), 1000)
 
-        lqr_simulation = sim.compile_simulation(prob, lqr)
-        mpc_simulation = sim.compile_simulation(prob, mpc)
+        lqr_sim = sim.compile_simulation(prob, lqr)
+        mpc_sim = sim.compile_simulation(prob, mpc)
 
-        lqr_states, lqr_inputs, lqr_costs = sim.run(ic, jnp.zeros((6, horizon)), lqr_simulation, prob, lqr)
-        mpc_states, mpc_inputs, mpc_costs = sim.run(ic, jnp.zeros((6, horizon)), mpc_simulation, prob, mpc)
+        lqr_states, lqr_inputs, lqr_costs = lqr_sim(ic, jnp.zeros((6, horizon)))
+        mpc_states, mpc_inputs, mpc_costs = mpc_sim(ic, jnp.zeros((6, horizon)))
 
         self.assertLess(jnp.abs(mpc_inputs.T - lqr_inputs.T).max(), 0.001)
 
@@ -214,11 +212,10 @@ class ControllerTests(unittest.TestCase):
         prob = make_nonlin_sys(horizon)
 
         mpc = ctl.mpc.create(prob, opt.adam(1e-0), 1000)
+        mpc_sim = sim.compile_simulation(prob, mpc)
 
-        mpc_simulation = sim.compile_simulation(prob, mpc)
 
-        with jax.disable_jit():
-            mpc_states, mpc_inputs, mpc_costs = sim.run(ic, jnp.zeros((6, horizon)), mpc_simulation, prob, mpc)
+        mpc_states, mpc_inputs, mpc_costs = mpc_sim(ic, jnp.zeros((6, horizon)))
 
         self.assertLess(jnp.abs(mpc_states[:, -1].max()), 0.006)
 

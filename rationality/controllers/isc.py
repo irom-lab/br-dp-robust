@@ -25,7 +25,7 @@ def create(prob: Problem, inv_temp: float, num_samples: int, init_key: jnp.ndarr
     params = ISCParams(inv_temp, init_key)
     cost_of_ctl_seq = util.compile_cost_of_control_sequence(prob)
 
-    init_isc = jax.jit(lambda prob_params, isc_params: init_isc_prototype(prob_params, isc_params,
+    init_isc = jax.jit(lambda prob_params, isc_params, key: init_isc_prototype(prob_params, isc_params, key,
                                                                           prior_params_for_scanning))
     isc_controller = jax.jit(lambda state, t, controller_state, temporal_info, params:
                              isc_prototype(state, t, controller_state, temporal_info, params,
@@ -34,9 +34,9 @@ def create(prob: Problem, inv_temp: float, num_samples: int, init_key: jnp.ndarr
     return Controller(init_isc, isc_controller, params)
 
 
-def init_isc_prototype(params: ProblemParams, isc_params: ISCParams,
+def init_isc_prototype(params: ProblemParams, isc_params: ISCParams, key: jnp.ndarray,
                        prior_params: Any) -> tuple[ISControllerState, ISTemporalInfo]:
-    return isc_params.init_key, prior_params
+    return key, prior_params
 
 
 def hamiltonian(state: State, input_seq: Input, t: int, proto: ProblemPrototype,
