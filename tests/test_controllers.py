@@ -181,7 +181,7 @@ class ControllerTests(unittest.TestCase):
                                                    (0, t * prob.num_inputs)),
                                            cov) for t in range(horizon)]
 
-        isc = ctl.isc.create(prob, jnp.inf, 100000, rnd.PRNGKey(0), dst.GaussianPrototype(prob.num_inputs),
+        isc = ctl.isc.create(prob, jnp.inf, 100000, dst.GaussianPrototype(prob.num_inputs),
                              prior_params)
 
         isc_sim = sim.compile_simulation(prob, isc)
