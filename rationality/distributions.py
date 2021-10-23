@@ -10,20 +10,41 @@ import jax.scipy as jsp
 
 
 def isdistparams(d: Any) -> bool:
+    """
+    Check if variable is a distribution parameter instance (e.g. instance of GaussianParams).
+
+    :param d: The variable to check.
+    :returns: True if d is a distribution parameter instance otherwise False.
+    """
     return isinstance(d, (GaussianParams,))
 
 
 class DistributionPrototype(NamedTuple):
+    """
+    Abstract representation of a probability distribution.
+    """
     sample: SamplePrototype
     log_prob: LogProbPrototype
     size: int
 
 
 class Distribution(NamedTuple):
+    """
+    A structure that contains a distribution's prototype and parameters along with a simplified API for calling
+    the distribution's methods.
+    """
     prototype: DistributionPrototype
     params: DistributionParams
 
     def sample(self, num_samples: int, key: jnp.ndarray) -> jnp.ndarray:
+        """
+        Generate a sample or samples from the distribution.
+
+        :param num_samples: The (positive) number of samples to generate.
+        :param key: The JAX RNG key for generating the samples.
+
+        :returns: If num_samples is 1, then an n-dimensional array. Otherwise an n-by-num_samples array.
+        """
         return self.prototype.sample(num_samples, key, self.params)
 
     def log_prob(self, x: jnp.ndarray) -> float:
