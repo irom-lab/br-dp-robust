@@ -22,6 +22,11 @@ def isdistparams(d: Any) -> bool:
 class DistributionPrototype(NamedTuple):
     """
     Abstract representation of a probability distribution.
+
+    Attributes:
+        sample: The prototype of the function that generates samples from the distribution.
+        log_prob: The prototype of the function that computes the log probability (density) for a given sample.
+        size: The dimension of the sample space.
     """
     sample: SamplePrototype
     log_prob: LogProbPrototype
@@ -32,6 +37,10 @@ class Distribution(NamedTuple):
     """
     A structure that contains a distribution's prototype and parameters along with a simplified API for calling
     the distribution's methods.
+
+    Attributes:
+        prototype: The structure defining the nature of the distribution (e.g. probability law, number of variables).
+        params: Numerical parameters of the distribution.
     """
     prototype: DistributionPrototype
     params: DistributionParams
@@ -48,6 +57,13 @@ class Distribution(NamedTuple):
         return self.prototype.sample(num_samples, key, self.params)
 
     def log_prob(self, x: jnp.ndarray) -> float:
+        """
+        Computes the log probability (density) for a given value.
+
+        :param x: The point at which to evaluate the log probability.
+
+        :returns: The log probability (may be infinite).
+        """
         return self.prototype.log_prob(x, self.params)
 
 
@@ -89,5 +105,5 @@ def gaussian(mean: jnp.ndarray, cov: jnp.ndarray) -> Gaussian:
 
 
 DistributionParams = Union[GaussianParams]
-SamplePrototype = Callable[[int, jnp.ndarray, DistributionParams], jnp.ndarray]
-LogProbPrototype = Callable[[jnp.ndarray, DistributionParams], float]
+SamplePrototype = Callable[[int, jnp.ndarray, DistributionParams], jnp.ndarray]  #: Maps (num_samples, rng_key, params) -> sample
+LogProbPrototype = Callable[[jnp.ndarray, DistributionParams], float]  #: Maps (sample, params) -> log_prob
