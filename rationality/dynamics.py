@@ -7,11 +7,11 @@ from rationality.types import State, Input, DynamicsParams
 
 
 class DynamicsPrototype(NamedTuple):
-    mapping: Callable[[State, Input, int, Any], State]
+    mapping: Callable[[State, Input, int, DynamicsParams], State]
     num_states: int
     num_inputs: int
 
-    def __call__(self, state: State, input: Input, t: int, params: Any) -> State:
+    def __call__(self, state: State, input: Input, t: int, params: DynamicsParams) -> State:
         return self.mapping(state, input, t, params)
 
 
