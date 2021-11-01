@@ -3,7 +3,7 @@ from typing import Callable, NamedTuple, Any
 import jax
 import jax.numpy as jnp
 
-from rationality.types import State, Input
+from rationality.types import State, Input, DynamicsParams
 
 
 class DynamicsPrototype(NamedTuple):
@@ -17,18 +17,18 @@ class DynamicsPrototype(NamedTuple):
 
 class Dynamics(NamedTuple):
     prototype: DynamicsPrototype
-    params: tuple
+    params: DynamicsParams
 
     def __call__(self, state: State, input: Input, t: int) -> State:
         return self.prototype(state, input, t, self.params)
 
 
-class Linear(NamedTuple):
+class LinearParams(DynamicsParams):
     A: jnp.ndarray
     B: jnp.ndarray
 
 
-class Quad2D(NamedTuple):
+class Quad2DParams(DynamicsParams):
     dt: float
     mass: float
     gravity: float
@@ -40,23 +40,49 @@ class Quad2D(NamedTuple):
 
 
 def linear(A: jnp.ndarray, B: jnp.ndarray) -> Dynamics:
-    params = Linear(A, B)
+    """
+    Creates a linear, time-invariant system instance.
+
+    :param A: The n-by-n state matrix.
+    :param B: The n-by-m input matrix.
+
+    :returns: The dynamics instance corresponding to the specified LTI system.
+    """
+    params = LinearParams(A, B)
 
     return Dynamics(DynamicsPrototype(linear_prototype, *B.shape), params)
 
 
 def quad2d(dt: float, mass: float, gravity: float, inertia: float) -> Dynamics:
-    params = Quad2D(dt, mass, gravity, inertia)
+    """
+    Creates a planar quadrotor instance.
+
+    :param dt: The time discretization step size.
+    :param mass: The quadrotor's mass.
+    :param gravity: The acceleration due to gravity of the quadrotor.
+    :param inertia: The moment of inertia of the quadrotor.
+    """
+    params = Quad2DParams(dt, mass, gravity, inertia)
 
     return Dynamics(DynamicsPrototype(quad2d_prototype, 6, 2), params)
 
 
 def crazyflie2d(dt: float) -> Dynamics:
+    """
+    Creates a planar quadrotor instance with parameters corresponding to the Bitcraze Crazyflie 2.1.
+
+    The specific parameters are: mass of 0.03 kg, acceleration due to gravity of 9.82 m / (s ^ 2),
+    and moment of inertia of 1.43e-5 kg (m ^ 2).
+
+    :param dt: The time discretization step size.
+
+    :returns: An instance of Dynamics representing a planar quadrotor with said parameter values
+    """
     return quad2d(dt, 0.03, 9.82, 1.43e-5)
 
 
 @jax.jit
-def linear_prototype(state: State, input: State, t: int, params: Linear) -> jnp.ndarray:
+def linear_prototype(state: State, input: State, t: int, params: LinearParams) -> jnp.ndarray:
     """
     The prototype for a linear dynamical system.
 
@@ -73,7 +99,7 @@ def linear_prototype(state: State, input: State, t: int, params: Linear) -> jnp.
 
 
 @jax.jit
-def quad2d_prototype(state: State, input: State, t: int, params: Quad2D) -> jnp.ndarray:
+def quad2d_prototype(state: State, input: State, t: int, params: Quad2DParams) -> jnp.ndarray:
     """
     The prototype for a planar quadrotor dynamical system.
 
@@ -100,7 +126,7 @@ def quad2d_prototype(state: State, input: State, t: int, params: Quad2D) -> jnp.
                       state[5] + dt * input[1] / inertia]).flatten()
 
 
-def linearize(dynamics: Dynamics, state: State, input: Input, t: int) -> Linear:
+def linearize(dynamics: Dynamics, state: State, input: Input, t: int) -> LinearParams:
     """
     Linearize the dynamics at a fixed-point.
 
@@ -111,5 +137,5 @@ def linearize(dynamics: Dynamics, state: State, input: Input, t: int) -> Linear:
 
     :return: A pair of matrices (A, B), representing the state and input matrices.
     """
-    return Linear(jax.jacfwd(lambda x: dynamics(x, input, t))(state),
-                  jax.jacfwd(lambda u: dynamics(state, u, t))(input))
+    return LinearParams(jax.jacfwd(lambda x: dynamics(x, input, t))(state),
+                        jax.jacfwd(lambda u: dynamics(state, u, t))(input))
