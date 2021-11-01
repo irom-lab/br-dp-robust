@@ -68,6 +68,14 @@ class Distribution(NamedTuple):
 
 
 class GaussianParams(NamedTuple):
+    """
+    Parameters of the Gaussian distribution.
+
+    Attributes:
+        mean: Either an n-dimensional vector or an m-by-n array representing m different Multivariate Gaussians.
+        cov: Either an n-by-n array (positive-definite) representing a covariance matrix or an m-by-n-by-n array
+             representing the covariance matrices for m Multivariate Gaussians.
+    """
     mean: jnp.ndarray
     cov: jnp.ndarray
 

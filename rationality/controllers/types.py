@@ -2,7 +2,7 @@ from typing import Any, Callable, NamedTuple
 
 import rationality.dynamics as dyn
 import rationality.objectives as obj
-from rationality.types import State, Input
+from rationality.types import State, Input, ObjectiveParams, DynamicsParams
 
 import jax.numpy as jnp
 
@@ -20,8 +20,8 @@ class ProblemPrototype(NamedTuple):
 
 
 class ProblemParams(NamedTuple):
-    dynamics: Any
-    objective: Any
+    dynamics: DynamicsParams
+    objective: ObjectiveParams
 
 
 class Problem(NamedTuple):

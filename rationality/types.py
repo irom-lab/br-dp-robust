@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TypeVar, NamedTuple, Union
+from typing import TypeVar, NamedTuple, Union, NewType
 
 import jax.numpy as jnp
 import numpy as np
@@ -8,6 +8,9 @@ State = jnp.ndarray  #: Type alias to enhance readability of type signatures. Ty
 Input = jnp.ndarray  #: Type alias to enhance readability of type signatures. Typically represents an m-dimensional system input
 
 Array = TypeVar('Array', jnp.ndarray, np.ndarray)  #: Generic type for handling either form of array.
+
+ObjectiveParams = NewType('ObjectiveParams', NamedTuple)
+DynamicsParams = NewType('DynamicsParams', NamedTuple)
 
 
 class Trajectory(NamedTuple):
