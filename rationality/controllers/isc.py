@@ -100,7 +100,7 @@ def isc_prototype(state: State, t: int, controller_state: ISControllerState,
     input_samples = prior_proto.sample(num_samples, subkey, temporal_info)
 
     log_prob = jax.jit(lambda u: prior_proto.log_prob(u, temporal_info)
-                                 - params.inv_temp * util.hamiltonian(state, u, t, prob_proto, cost_of_ctl_seq))
+                                 - params.inv_temp * util.hamiltonian_prototype(state, u, t, prob_proto, cost_of_ctl_seq))
 
     @jax.jit
     def zero_temp_case(input_sequences: jnp.ndarray) -> jnp.ndarray:
@@ -108,7 +108,7 @@ def isc_prototype(state: State, t: int, controller_state: ISControllerState,
         This function handles the limiting case where inv_temp is infinite. In this case, we simply take the best
         performing input sequence.
         """
-        costs = jax.vmap(lambda u: util.hamiltonian(state, u, t, prob_proto, cost_of_ctl_seq), in_axes=1)(input_sequences)
+        costs = jax.vmap(lambda u: util.hamiltonian_prototype(state, u, t, prob_proto, cost_of_ctl_seq), in_axes=1)(input_sequences)
 
         return jnp.take(input_sequences, jnp.argmin(costs), axis=1)
 

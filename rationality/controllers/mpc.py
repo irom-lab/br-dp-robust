@@ -42,7 +42,7 @@ def init_svmpc_prototype(params: ProblemParams, svmpc_params: MPCParams,
 @partial(jax.jit, static_argnums=(3, 4))
 def objective(x: State, t: int, flattened_inputs: Input,
               cost_of_ctl_seq: Callable[[State, int, Input], float], prob_proto: ProblemPrototype) -> float:
-    return util.hamiltonian(x, flattened_inputs, t, prob_proto, cost_of_ctl_seq)
+    return util.hamiltonian_prototype(x, flattened_inputs, t, prob_proto, cost_of_ctl_seq)
 
 
 @partial(jax.jit, static_argnums=(5, 6, 7, 8))

@@ -113,10 +113,10 @@ def svmpc_prototype(state: State,
     # log_prob_finite = jax.jit(lambda u: prior_proto.log_prob(u, temporal_info)
     #                                     - params.inv_temp * util.hamiltonian(state, u, t, prob_proto, cost_of_ctl_seq))
     log_prob_finite = jax.jit(lambda u: (prior_proto.log_prob(u, temporal_info)
-                                         - params.inv_temp * util.hamiltonian(state, u, t, prob_proto, cost_of_ctl_seq)))
+                                         - params.inv_temp * util.hamiltonian_prototype(state, u, t, prob_proto, cost_of_ctl_seq)))
     sample_finite = jax.jit(lambda u: svmpc_sample_finite(u, clip, clip_ord, subkey2, log_prob_finite, kernel, opt, opt_iters, sir_at_end))
 
-    log_prob_infinite = jax.jit(lambda u: -util.hamiltonian(state, u, t, prob_proto, cost_of_ctl_seq))
+    log_prob_infinite = jax.jit(lambda u: -util.hamiltonian_prototype(state, u, t, prob_proto, cost_of_ctl_seq))
     sample_infinite = jax.jit(lambda u: svmpc_sample_infinite(u, clip, clip_ord, log_prob_infinite, opt, opt_iters))
 
     posterior_input_sample = jax.lax.cond(jnp.isinf(params.inv_temp),

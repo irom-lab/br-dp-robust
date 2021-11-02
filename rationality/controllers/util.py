@@ -60,16 +60,49 @@ def cost_of_control_sequence_prototype(ic: State, it: int, inputs: Input, prob: 
 
 
 def compile_cost_of_control_sequence(prob: Problem) -> Callable[[State, int, Input], float]:
+    """
+    Produces a compiled version of `cost_of_control_sequence` for a given problem instance.
+
+    :param prob: The control problem instance used to compile the function.
+
+    :returns: A function with the same purpose and signature as `cost_of_control_sequence` except
+              with the `prob` argument omitted.
+    """
     return jax.jit(lambda ic, it, inputs: cost_of_control_sequence_prototype(ic, it, inputs, prob))
 
 
 def cost_of_control_sequence(ic: State, it: int, inputs: Input, prob: Problem) -> float:
+    """
+    Computes the cost of a sequences of control inputs from an initial time to the end of the problem horizon.
+
+    :param ic: The initial system state.
+    :param it: The initial time at which the sequence is applied.
+    :param inputs: The input sequence represented as an m-by-p array, where each column represents a control input
+                   to be applied in order.
+    :param prob: The control problem instance for which the cost is computed.
+
+    :returns: The total cost accrued from time it to time it + p for the given sequence. For time steps after the end
+              of the problem horizon, no cost is accumulated.
+    """
+
     return compile_cost_of_control_sequence(prob)(ic, it, inputs)
 
 
-def hamiltonian(state: State, input_seq: Input, t: int, proto: ProblemPrototype,
-                cost_of_ctl_seq: Callable[[State, int, Input], float]) -> float:
-    inputs = jnp.pad(input_seq.reshape((proto.dynamics.num_inputs, -1), order='F'),
+def hamiltonian_prototype(state: State, input_vector: Input, t: int, proto: ProblemPrototype,
+                          cost_of_ctl_seq: Callable[[State, int, Input], float]) -> float:
+    """
+    Compute the cost of a control sequence using an interface suitable for the variational algorithms in the inference module.
+
+    :param state: The initial system state.
+    :param input_vector: A vector of (m * p) inputs that will be reshaped into an m-by-p array of inputs (using Fortran ordering).
+                         Each column of this array is an input applied in order.
+    :param proto: The prototype of the control problem instance used to compute the cost.
+    :param cost_of_ctl_seq: The cost-of-control sequence function used (compiled or otherwise).
+
+    :returns: The cost of control sequence for the input vector.
+    """
+
+    inputs = jnp.pad(input_vector.reshape((proto.dynamics.num_inputs, -1), order='F'),
                      [(0, 0), (0, 1)])
 
     return cost_of_ctl_seq(state, t, inputs)
@@ -77,4 +110,13 @@ def hamiltonian(state: State, input_seq: Input, t: int, proto: ProblemPrototype,
 
 @partial(jax.jit, static_argnums=1)
 def flat_inputs_to_sequence(inputs: Input, num_inputs: int) -> Input:
+    """
+    Converts an (m * p) length vector into an m-by-p array of control inputs.
+
+    :param inputs: The "flattened" vector of inputs to be converted.
+    :param num_inputs: The number of inputs m.
+
+    :returns: The converted m-by-p array.
+    """
+
     return inputs.reshape((num_inputs, -1), order='F')
