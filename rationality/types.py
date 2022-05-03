@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TypeVar, NamedTuple, Union
+from typing import TypeVar, NamedTuple, Union, Callable
 
 import jax.numpy as jnp
 import numpy as np
@@ -11,6 +11,9 @@ Array = TypeVar('Array', jnp.ndarray, np.ndarray)  #: Generic type for handling 
 
 ObjectiveParams = NamedTuple
 DynamicsParams = NamedTuple
+StoppingCondParams = NamedTuple
+
+StoppingCondition = Callable[[State, Input, int, State], bool]
 
 
 class Trajectory(NamedTuple):

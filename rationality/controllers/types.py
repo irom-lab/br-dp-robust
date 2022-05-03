@@ -2,7 +2,7 @@ from typing import Any, Callable, NamedTuple
 
 import rationality.dynamics as dyn
 import rationality.objectives as obj
-from rationality.types import State, Input, ObjectiveParams, DynamicsParams
+from rationality.types import State, Input, ObjectiveParams, DynamicsParams, StoppingCondition
 
 import jax.numpy as jnp
 
