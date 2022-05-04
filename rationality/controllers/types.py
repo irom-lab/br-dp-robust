@@ -4,6 +4,7 @@ import rationality.dynamics as dyn
 import rationality.objectives as obj
 from rationality.types import State, Input, ObjectiveParams, DynamicsParams, StoppingCondition
 
+import jax
 import jax.numpy as jnp
 
 
@@ -57,6 +58,16 @@ class Controller(NamedTuple):
     def __call__(self, state: State, t: int, controller_state: ControllerState,
                  temporal_info: ControllerTemporalInfo) -> tuple[Input, ControllerState]:
         return self.controller_prototype(state, t, controller_state, temporal_info, self.params)
+
+def open_loop(inputs: Input) -> Controller:
+    def _init_open_loop_prototype(*args) -> tuple[None, inputs]:
+        return None, inputs
+    
+    def _open_loop_prototype(state: State, t: int, ctl_state: State, temp_info: Input, params: None) -> tuple[Input, None]:
+        return temp_info, None
+
+    return Controller(jax.jit(_init_open_loop_prototype), jax.jit(_open_loop_prototype), None)
+
 
 
 def problem(dynamics: dyn.Dynamics, objective: obj.Objective, horizon: int) -> Problem:

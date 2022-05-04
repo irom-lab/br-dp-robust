@@ -18,7 +18,7 @@ class MPParams(NamedTuple):
     inv_temp: float
 
 
-def create(inv_temp: float, prob: Problem, prior_proto: dst.DistributionPrototype, stop_cond: StoppingCondition,
+def create(inv_temp: float, prob: Problem, prior_proto: dst.DistributionPrototype,
            prior_params: dst.DistributionParams, num_samples: int) -> Controller:
     dyn = jax.jit(lambda state, input, t: prob.prototype.dynamics(state, input, t, prob.params.dynamics))
     traj_cost = jax.jit(lambda state, input, t: prob.prototype.trajectory_objective(state, input, t, prob.params.objective))
@@ -94,20 +94,36 @@ def _mp_prototype_finite_inv_temp(state: State, t: int, controller_state: MPCont
                                   rollout: Callable[[State, Input, int], State],
                                   process_traj: Callable[[State, Input, int], tuple[float, int]]) -> tuple[Input, MPControllerState]:
     
+    key, subkey = rnd.split(controller_state)
+    input_samples = jax.vmap(lambda sk: prior_proto.sample(prob.prototype.horizon, sk))(rnd.split(subkey, num_samples))
+    states = jax.vmap(lambda x, u: rollout(x, u, t))(states, input_samples)
+    cost, _ = jax.vmap(lambda x, u: process_traj(x, u, t))(states, input_samples)
+
+    log_probs = jax.jit(lambda u, c: prior_proto.log_prob(u, temporal_info) - params.inv_temp * c)(cost, input_samples)
+    input_seqs = jax.vmap(lambda u: u.flatten())(input_samples)
+
+    key, subkey = rnd.split(key)
+    selected_seq = jax.lax.cond(jnp.isfinite(params.inv_temp),
+                                lambda args: inf.sir(args[0], args[1], subkey),
+                                lambda args: jnp.take(args[1], jnp.argmax(args[0]), axis=0),
+                                (log_probs, input_seqs))
+
+    return selected_seq[:prob.num_inputs], key
+
+
+def _mp_prototype_inf_inv_temp(state: State, t: int, controller_state: MPControllerState,
+                               temporal_info: MPTemporalInfo, params: MPParams,
+                               prob: Problem, rollout_horizon: int,
+                               prior_proto: dst.DistributionPrototype,
+                               num_samples: int,
+                               rollout: Callable[[State, Input, int], State],
+                               process_traj: Callable[[State, Input, int], tuple[float, int]]) -> tuple[Input, MPControllerState]:
+    
     key, subkey = rnd.split(controller_state)    
     input_samples = prior_proto.sample(num_samples, subkey)
     states = jax.vmap(lambda x, u: rollout(x, u, t))(states, input_samples)
     cost, _ = jax.vmap(lambda x, u: process_traj(x, u, t))(states, input_samples)
 
-    log_prob = jax.jit(lambda u, c: prior_proto.log_prob(u, temporal_info) - params.inv_temp * c)(cost, input_samples)
-
-    key, subkey = rnd.split(key)
-    input_traj = inf.sir(log_prob, input_samples.T, subkey)
+    jnp.take(input_samples, jnp.argmin(costs), axis=0)
 
     return input_traj.T[0], key
-
-    
-
-
-
-
