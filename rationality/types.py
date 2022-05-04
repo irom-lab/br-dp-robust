@@ -31,6 +31,7 @@ class Trajectory(NamedTuple):
     states: State
     inputs: State
     costs: Array
+    stopping_time: int
 
     def asnumpy(self) -> Trajectory:
         """
