@@ -37,14 +37,14 @@ class Workspace(NamedTuple):
     boundary: Polytope
     obstacles: Polytope
 
-    @jax.jit
-    def freespace_contains_point(self, point: jnp.ndarray) -> bool:
-        return self.boundary.contains(point) & ~jnp.any(jax.vmap(jax.jit(lambda A, b, c, d: Polytope(A, b, c, d).contains(point)))(*self.obstacles))
+@jax.jit
+def freespace_contains_point(w: Workspace, point: jnp.ndarray) -> bool:
+    return w.boundary.contains(point) & ~jnp.any(jax.vmap(jax.jit(lambda A, b, c, d: Polytope(A, b, c, d).contains(point)))(*w.obstacles))
 
-    @jax.jit
-    def freespace_contains_segment(self, start: jnp.ndarray, end: jnp.ndarray) -> bool:
-        return self.boundary.contains(start) & self.boundary.contains(end) &\
-               ~jnp.any(jax.vmap(jax.jit(lambda A, b, c, d: Polytope(A, b, c, d).intersects(start, end)))(*self.obstacles))
+@jax.jit
+def freespace_contains_segment(w: Workspace, start: jnp.ndarray, end: jnp.ndarray) -> bool:
+    return w.boundary.contains(start) & w.boundary.contains(end) &\
+            ~jnp.any(jax.vmap(jax.jit(lambda A, b, c, d: Polytope(A, b, c, d).intersects(start, end)))(*w.obstacles))
 
 
 def aabb(centroid: jnp.ndarray, dimensions: jnp.ndarray) -> Polytope:
@@ -57,7 +57,7 @@ def aabb(centroid: jnp.ndarray, dimensions: jnp.ndarray) -> Polytope:
     return Polytope(normals, affine, centroid, dimensions)
 
 
-def workspace(width: float, height: float, obstacles: list[Polytope]):
+def workspace(width: float, height: float, obstacles: list[Polytope]) -> Workspace:
     obstacles = Polytope(jnp.stack([o.linear for o in obstacles]), jnp.stack([o.affine for o in obstacles]),
                          jnp.stack([o.centroid for o in obstacles]), jnp.stack([o.dimensions for o in obstacles]))
 
